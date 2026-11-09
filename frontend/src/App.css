@@ -1,0 +1,140 @@
+#root {
+  width: 100%;
+}
+
+main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 56px 24px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  letter-spacing: -0.04em;
+  color: #f8fafc;
+}
+
+main > p {
+  margin: 12px 0 36px;
+  color: #94a3b8;
+  font-size: 1.1rem;
+}
+
+article {
+  margin-bottom: 24px;
+  padding: 28px;
+  border: 1px solid #29364d;
+  border-radius: 18px;
+  background: #111c30;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 18%);
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 1.4rem;
+}
+
+article > p {
+  color: #b6c2d5;
+  line-height: 1.7;
+}
+
+label {
+  display: block;
+  margin-top: 28px;
+  color: #7dd3fc;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+textarea {
+  min-height: 230px;
+  padding: 18px;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #080f1e;
+  color: #a7f3d0;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  tab-size: 2;
+  resize: vertical;
+}
+
+button {
+  padding: 11px 20px;
+  margin: 8px 10px 0 0;
+  border: 1px solid #475569;
+  border-radius: 9px;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-weight: 600;
+  transition: background 0.15s, transform 0.15s;
+}
+
+button:not(:disabled):hover {
+  background: #334155;
+  transform: translateY(-1px);
+}
+
+article > button:first-of-type {
+  border-color: #38bdf8;
+  background: #38bdf8;
+  color: #082f49;
+}
+
+article > button:first-of-type:not(:disabled):hover {
+  background: #7dd3fc;
+}
+
+h3 {
+  margin: 30px 0 12px;
+  color: #cbd5e1;
+  font-size: 0.95rem;
+}
+
+article > div {
+  min-height: 100px;
+  padding: 18px;
+  border: 1px solid #29364d;
+  border-radius: 12px;
+  background: #080f1e;
+}
+
+article > div p {
+  margin: 0;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+pre {
+  margin: 0;
+  color: #a7f3d0;
+  font-family: Consolas, "Courier New", monospace;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+article > div [role="alert"],
+[role="alert"] {
+  color: #fda4af;
+}
+
+@media (max-width: 600px) {
+  main {
+    padding: 32px 16px;
+  }
+
+  article {
+    padding: 20px;
+  }
+
+  button {
+    width: 100%;
+    margin-right: 0;
+  }
+}

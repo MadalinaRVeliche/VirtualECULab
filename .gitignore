@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Frontend
+node_modules/
+dist/
+
+# Configurări locale și secrete
+.env
+.env.*
+!.env.example
+
+# Date locale
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor și sistem
+.vscode/
+Thumbs.db
+.DS_Store
