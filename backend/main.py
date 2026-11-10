@@ -1,5 +1,5 @@
 import re
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.can_frames import StandardCanFrame
 from backend.database import get_db
 from backend.models import LessonProgress
 
@@ -142,7 +143,7 @@ class ExerciseSubmission(BaseModel):
 def check_exercise(
     lesson_id: int,
     submission: ExerciseSubmission,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ):
     expected_outputs = {
         1: ["ECU ready"],
@@ -187,9 +188,14 @@ def check_exercise(
 
 
 @app.get("/progress")
-def get_progress(db: Session = Depends(get_db)):
+def get_progress(db: Annotated[Session, Depends(get_db)]):
     completed_ids = db.scalars(
         select(LessonProgress.lesson_id).order_by(LessonProgress.lesson_id)
     ).all()
 
     return {"completed_lesson_ids": completed_ids}
+
+
+@app.post("/can/frames/preview")
+def preview_can_frame(frame: StandardCanFrame):
+    return frame.preview()

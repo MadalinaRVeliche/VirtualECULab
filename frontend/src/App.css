@@ -167,4 +167,66 @@ article > div [role="alert"],
     font-size: 0.75rem;
     font-weight: 600;
   }
+  .can-trace {
+    margin-top: 32px;
+    padding: 28px;
+    border: 1px solid #29364d;
+    border-radius: 18px;
+    background: #111c30;
+  }
+
+  .can-trace p,
+  .can-trace caption {
+    color: #b6c2d5;
+    line-height: 1.6;
+  }
+
+  .can-trace input {
+    display: block;
+    width: 100%;
+    margin: 10px 0 18px;
+    padding: 12px;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    background: #080f1e;
+    color: #a7f3d0;
+    font: inherit;
+    font-family: Consolas, monospace;
+  }
+
+  .can-trace input:focus-visible {
+    outline: 3px solid #38bdf8;
+    outline-offset: 3px;
+  }
+
+  .trace-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .can-trace table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+  }
+
+  .can-trace caption {
+    padding: 12px 0;
+    text-align: left;
+    font-size: 0.85rem;
+  }
+
+  .can-trace th,
+  .can-trace td {
+    padding: 12px;
+    border-bottom: 1px solid #29364d;
+    white-space: nowrap;
+  }
+
+  .can-trace th {
+    color: #7dd3fc;
+  }
+
+  .can-trace td {
+    font-family: Consolas, monospace;
+  }
 }

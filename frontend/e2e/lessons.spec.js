@@ -51,7 +51,7 @@ test("rejects messages in the wrong order", async ({ page }) => {
     })
     .click();
 
-  await expect(page.getByRole("status")).toHaveText(
+  await expect(page.locator("article").getByRole("status")).toHaveText(
     "Expected messages in this exact order: Starting ECU → System ready",
   );
 });
@@ -71,7 +71,7 @@ test("keeps completion visible after refreshing", async ({ page }) => {
     })
     .click();
 
-  await expect(page.getByRole("status")).toHaveText(
+  await expect(page.locator("article").getByRole("status")).toHaveText(
     "Correct! You completed the exercise.",
   );
 
@@ -140,7 +140,7 @@ test("triggers a keyboard event only when its key is pressed", async ({
     })
     .click();
 
-  await expect(page.getByRole("status")).toHaveText(
+  await expect(page.locator("article").getByRole("status")).toHaveText(
     "Correct! You completed the exercise.",
   );
 

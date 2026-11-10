@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import CanTrace from "./CanTrace";
 
 const API_URL = "http://127.0.0.1:8000";
 
@@ -263,6 +264,7 @@ function App() {
           onComplete={markCompleted}
         />
       )}
+      <CanTrace />
     </main>
   );
 }
