@@ -22,3 +22,7 @@ dist/
 .vscode/
 Thumbs.db
 .DS_Store
+
+# Playwright generated files
+playwright-report/
+test-results/
