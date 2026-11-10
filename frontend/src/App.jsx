@@ -3,7 +3,7 @@ import "./App.css";
 
 const API_URL = "http://127.0.0.1:8000";
 
-function LessonEditor({ lesson }) {
+function LessonEditor({ lesson, onComplete }) {
   const [code, setCode] = useState(lesson.code);
   const [output, setOutput] = useState([]);
   const [error, setError] = useState("");
@@ -44,6 +44,10 @@ function LessonEditor({ lesson }) {
           passed: data.passed,
           message: data.message,
         });
+
+        if (data.passed) {
+          onComplete(lesson.id);
+        }
       }
     } catch (err) {
       setError(
@@ -133,11 +137,15 @@ function LessonEditor({ lesson }) {
 
 function App() {
   const [lessons, setLessons] = useState([]);
+  const [completedLessonIds, setCompletedLessonIds] = useState([]);
   const [selectedLessonId, setSelectedLessonId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [progressError, setProgressError] = useState("");
 
   useEffect(() => {
+    let active = true;
+
     async function loadLessons() {
       try {
         const response = await fetch(`${API_URL}/lessons`);
@@ -147,17 +155,59 @@ function App() {
         }
 
         const data = await response.json();
-        setLessons(data);
-        setSelectedLessonId(data[0]?.id ?? null);
+
+        if (active) {
+          setLessons(data);
+          setSelectedLessonId(data[0]?.id ?? null);
+        }
       } catch {
-        setError("Cannot load lessons. Make sure the backend is running.");
+        if (active) {
+          setError("Cannot load lessons. Make sure the backend is running.");
+        }
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    async function loadProgress() {
+      try {
+        const response = await fetch(`${API_URL}/progress`);
+
+        if (!response.ok) {
+          throw new Error("Failed to load progress.");
+        }
+
+        const data = await response.json();
+
+        if (active) {
+          setCompletedLessonIds((current) => [
+            ...new Set([...current, ...data.completed_lesson_ids]),
+          ]);
+        }
+      } catch {
+        if (active) {
+          setProgressError(
+            "Saved progress could not be loaded. Refresh to try again.",
+          );
+        }
       }
     }
 
     loadLessons();
+    loadProgress();
+
+    return () => {
+      active = false;
+    };
   }, []);
+
+  function markCompleted(lessonId) {
+    setCompletedLessonIds((current) =>
+      current.includes(lessonId) ? current : [...current, lessonId],
+    );
+  }
 
   const selectedLesson = lessons.find(
     (lesson) => lesson.id === selectedLessonId,
@@ -170,6 +220,7 @@ function App() {
 
       {loading && <p>Loading lessons...</p>}
       {error && <p role="alert">{error}</p>}
+      {progressError && <p role="alert">{progressError}</p>}
 
       {!loading && !error && lessons.length > 0 && (
         <nav className="lesson-navigation" aria-label="Lessons">
@@ -181,13 +232,20 @@ function App() {
               onClick={() => setSelectedLessonId(lesson.id)}
             >
               {lesson.id}. {lesson.title}
+              {completedLessonIds.includes(lesson.id) && (
+                <span className="completion-badge"> Completed</span>
+              )}
             </button>
           ))}
         </nav>
       )}
 
       {selectedLesson && (
-        <LessonEditor key={selectedLesson.id} lesson={selectedLesson} />
+        <LessonEditor
+          key={selectedLesson.id}
+          lesson={selectedLesson}
+          onComplete={markCompleted}
+        />
       )}
     </main>
   );

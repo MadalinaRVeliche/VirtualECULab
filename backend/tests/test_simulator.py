@@ -142,6 +142,34 @@ def test_second_exercise_accepts_correct_order():
     ]
 
 
+def test_correct_answer_saves_progress_once():
+    submission = {"code": 'on start { write("ECU ready"); }'}
+
+    for _ in range(2):
+        response = client.post(
+            "/lessons/1/check",
+            json=submission,
+        )
+        assert response.status_code == 200
+        assert response.json()["passed"] is True
+
+    progress = client.get("/progress")
+
+    assert progress.status_code == 200
+    assert progress.json() == {"completed_lesson_ids": [1]}
+
+
+def test_wrong_answer_does_not_save_progress():
+    response = client.post(
+        "/lessons/1/check",
+        json={"code": 'on start { write("Wrong"); }'},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["passed"] is False
+    assert client.get("/progress").json() == {"completed_lesson_ids": []}
+
+
 def test_second_exercise_rejects_reversed_order():
     response = client.post(
         "/lessons/2/check",

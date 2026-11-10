@@ -1,8 +1,13 @@
 import re
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from backend.database import get_db
+from backend.models import LessonProgress
 
 app = FastAPI(title="Virtual ECU Lab")
 
@@ -105,7 +110,11 @@ class ExerciseSubmission(BaseModel):
 
 
 @app.post("/lessons/{lesson_id}/check")
-def check_exercise(lesson_id: int, submission: ExerciseSubmission):
+def check_exercise(
+    lesson_id: int,
+    submission: ExerciseSubmission,
+    db: Session = Depends(get_db),
+):
     expected_outputs = {
         1: ["ECU ready"],
         2: ["Starting ECU", "System ready"],
@@ -121,6 +130,13 @@ def check_exercise(lesson_id: int, submission: ExerciseSubmission):
     expected_output = expected_outputs[lesson_id]
     passed = result["output"] == expected_output
 
+    if passed:
+        progress = db.get(LessonProgress, lesson_id)
+
+        if progress is None:
+            db.add(LessonProgress(lesson_id=lesson_id))
+            db.commit()
+
     expected_text = " → ".join(expected_output)
 
     return {
@@ -132,3 +148,12 @@ def check_exercise(lesson_id: int, submission: ExerciseSubmission):
             else f"Expected messages in this exact order: {expected_text}"
         ),
     }
+
+
+@app.get("/progress")
+def get_progress(db: Session = Depends(get_db)):
+    completed_ids = db.scalars(
+        select(LessonProgress.lesson_id).order_by(LessonProgress.lesson_id)
+    ).all()
+
+    return {"completed_lesson_ids": completed_ids}
