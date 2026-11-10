@@ -2,10 +2,9 @@ import { useState } from "react";
 
 const API_URL = "http://127.0.0.1:8000";
 
-export default function CanTrace() {
+export default function CanTrace({ frames, onInspectFrame, onClear }) {
   const [identifier, setIdentifier] = useState("123");
   const [data, setData] = useState("10 27");
-  const [frames, setFrames] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -60,10 +59,7 @@ export default function CanTrace() {
         );
       }
 
-      setFrames((current) => [
-        ...current,
-        { ...frame, rowId: crypto.randomUUID() },
-      ]);
+      onInspectFrame(frame);
     } catch (err) {
       setError(
         err instanceof TypeError
@@ -77,10 +73,10 @@ export default function CanTrace() {
 
   return (
     <section className="can-trace" aria-labelledby="trace-title">
-      <h2 id="trace-title">CAN Trace — Frame Preview</h2>
+      <h2 id="trace-title">CAN Trace</h2>
       <p>
-        Inspect Classical CAN standard data frames. Identifiers and payload
-        bytes are entered in hexadecimal.
+        Inspect frame previews and simulated CAPL transmissions. Identifiers and
+        payload bytes are displayed in hexadecimal.
       </p>
 
       <form onSubmit={inspectFrame}>
@@ -108,7 +104,7 @@ export default function CanTrace() {
 
         <button
           type="button"
-          onClick={() => setFrames([])}
+          onClick={onClear}
           disabled={busy || frames.length === 0}
         >
           Clear trace
@@ -117,16 +113,17 @@ export default function CanTrace() {
 
       {error && <p role="alert">{error}</p>}
 
-      <p role="status">{frames.length} frame previews</p>
+      <p role="status">{frames.length} trace entries</p>
 
       <div className="trace-table-wrapper">
         <table>
           <caption>
-            Local preview history; cleared when the page reloads.
+            Local simulated trace; cleared when the page reloads.
           </caption>
           <thead>
             <tr>
               <th scope="col">#</th>
+              <th scope="col">Source</th>
               <th scope="col">Identifier</th>
               <th scope="col">Type</th>
               <th scope="col">DLC</th>
@@ -137,6 +134,7 @@ export default function CanTrace() {
             {frames.map((frame, index) => (
               <tr key={frame.rowId}>
                 <td>{index + 1}</td>
+                <td>{frame.source}</td>
                 <td>{frame.identifier_hex}</td>
                 <td>Standard data</td>
                 <td>{frame.dlc}</td>

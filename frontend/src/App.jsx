@@ -4,7 +4,7 @@ import CanTrace from "./CanTrace";
 
 const API_URL = "http://127.0.0.1:8000";
 
-function LessonEditor({ lesson, onComplete }) {
+function LessonEditor({ lesson, onComplete, onTransmit }) {
   const [code, setCode] = useState(lesson.code);
   const [output, setOutput] = useState([]);
   const [error, setError] = useState("");
@@ -39,6 +39,9 @@ function LessonEditor({ lesson, onComplete }) {
       }
 
       setOutput(data.output);
+      if (!checkExercise && data.frames?.length) {
+        onTransmit(data.frames);
+      }
 
       if (checkExercise) {
         setFeedback({
@@ -159,6 +162,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [progressError, setProgressError] = useState("");
+  const [frames, setFrames] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -211,7 +215,6 @@ function App() {
         }
       }
     }
-
     loadLessons();
     loadProgress();
 
@@ -220,6 +223,15 @@ function App() {
     };
   }, []);
 
+  function recordFrames(newFrames, source) {
+    const rows = newFrames.map((frame) => ({
+      ...frame,
+      rowId: crypto.randomUUID(),
+      source,
+    }));
+
+    setFrames((current) => [...current, ...rows]);
+  }
   function markCompleted(lessonId) {
     setCompletedLessonIds((current) =>
       current.includes(lessonId) ? current : [...current, lessonId],
@@ -262,9 +274,14 @@ function App() {
           key={selectedLesson.id}
           lesson={selectedLesson}
           onComplete={markCompleted}
+          onTransmit={(newFrames) => recordFrames(newFrames, "CAPL Tx")}
         />
       )}
-      <CanTrace />
+      <CanTrace
+        frames={frames}
+        onInspectFrame={(frame) => recordFrames([frame], "Preview")}
+        onClear={() => setFrames([])}
+      />
     </main>
   );
 }

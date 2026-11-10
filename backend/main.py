@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.can_frames import StandardCanFrame
+from backend.capl_can import simulate_can_program
 from backend.database import get_db
 from backend.models import LessonProgress
 
@@ -88,6 +89,18 @@ def simulate(request: SimulationRequest):
             status_code=400,
             detail="A key event requires a single key character.",
         )
+    if re.match(r"\s*variables\b", request.code):
+        try:
+            return simulate_can_program(
+                request.code,
+                event=request.event,
+                key=request.key,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            ) from exc
 
     event_match = re.fullmatch(
         r"\s*on\s+(start|key\s+'([^'\\\r\n])')\s*\{(.*)\}\s*",
