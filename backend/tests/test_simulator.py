@@ -117,3 +117,36 @@ def test_exercise_returns_404_for_unknown_lesson():
     )
 
     assert response.status_code == 404
+
+
+def test_lessons_include_both_exercises():
+    response = client.get("/lessons")
+
+    assert response.status_code == 200
+    lessons = response.json()
+    assert [lesson["id"] for lesson in lessons] == [1, 2]
+    assert all(lesson["task"] for lesson in lessons)
+
+
+def test_second_exercise_accepts_correct_order():
+    response = client.post(
+        "/lessons/2/check",
+        json={"code": ('on start {write("Starting ECU");write("System ready");}')},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["passed"] is True
+    assert response.json()["output"] == [
+        "Starting ECU",
+        "System ready",
+    ]
+
+
+def test_second_exercise_rejects_reversed_order():
+    response = client.post(
+        "/lessons/2/check",
+        json={"code": ('on start {write("System ready");write("Starting ECU");}')},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["passed"] is False

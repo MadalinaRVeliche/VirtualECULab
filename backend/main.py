@@ -36,7 +36,22 @@ def get_lessons():
                 "Write an on start event that prints exactly one message: ECU ready"
             ),
             "code": 'on start\n{\n  write("Hello, ECU!");\n}',
-        }
+        },
+        {
+            "id": 2,
+            "title": "Multiple messages",
+            "description": (
+                "Statements inside on start run in order. "
+                "Each write statement displays a separate message."
+            ),
+            "task": (
+                "Print exactly two messages in this order: "
+                "Starting ECU, then System ready."
+            ),
+            "code": (
+                'on start\n{\n  write("First message");\n  write("Second message");\n}'
+            ),
+        },
     ]
 
 
@@ -91,15 +106,22 @@ class ExerciseSubmission(BaseModel):
 
 @app.post("/lessons/{lesson_id}/check")
 def check_exercise(lesson_id: int, submission: ExerciseSubmission):
-    if lesson_id != 1:
+    expected_outputs = {
+        1: ["ECU ready"],
+        2: ["Starting ECU", "System ready"],
+    }
+
+    if lesson_id not in expected_outputs:
         raise HTTPException(
             status_code=404,
             detail="Lesson not found.",
         )
 
     result = simulate(SimulationRequest(code=submission.code))
-    expected_output = ["ECU ready"]
+    expected_output = expected_outputs[lesson_id]
     passed = result["output"] == expected_output
+
+    expected_text = " → ".join(expected_output)
 
     return {
         "passed": passed,
@@ -107,6 +129,6 @@ def check_exercise(lesson_id: int, submission: ExerciseSubmission):
         "message": (
             "Correct! You completed the exercise."
             if passed
-            else "Expected exactly one message: ECU ready"
+            else f"Expected messages in this exact order: {expected_text}"
         ),
     }

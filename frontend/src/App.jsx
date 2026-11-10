@@ -133,6 +133,7 @@ function LessonEditor({ lesson }) {
 
 function App() {
   const [lessons, setLessons] = useState([]);
+  const [selectedLessonId, setSelectedLessonId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -147,6 +148,7 @@ function App() {
 
         const data = await response.json();
         setLessons(data);
+        setSelectedLessonId(data[0]?.id ?? null);
       } catch {
         setError("Cannot load lessons. Make sure the backend is running.");
       } finally {
@@ -157,6 +159,10 @@ function App() {
     loadLessons();
   }, []);
 
+  const selectedLesson = lessons.find(
+    (lesson) => lesson.id === selectedLessonId,
+  );
+
   return (
     <main>
       <h1>Virtual ECU Lab</h1>
@@ -165,9 +171,24 @@ function App() {
       {loading && <p>Loading lessons...</p>}
       {error && <p role="alert">{error}</p>}
 
-      {lessons.map((lesson) => (
-        <LessonEditor key={lesson.id} lesson={lesson} />
-      ))}
+      {!loading && !error && lessons.length > 0 && (
+        <nav className="lesson-navigation" aria-label="Lessons">
+          {lessons.map((lesson) => (
+            <button
+              key={lesson.id}
+              className={lesson.id === selectedLessonId ? "selected" : ""}
+              aria-pressed={lesson.id === selectedLessonId}
+              onClick={() => setSelectedLessonId(lesson.id)}
+            >
+              {lesson.id}. {lesson.title}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {selectedLesson && (
+        <LessonEditor key={selectedLesson.id} lesson={selectedLesson} />
+      )}
     </main>
   );
 }

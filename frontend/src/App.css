@@ -72,7 +72,9 @@ button {
   background: #1e293b;
   color: #f1f5f9;
   font-weight: 600;
-  transition: background 0.15s, transform 0.15s;
+  transition:
+    background 0.15s,
+    transform 0.15s;
 }
 
 button:not(:disabled):hover {
@@ -136,5 +138,22 @@ article > div [role="alert"],
   button {
     width: 100%;
     margin-right: 0;
+  }
+  .lesson-navigation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .lesson-navigation button {
+    margin: 0;
+    text-align: left;
+  }
+
+  .lesson-navigation button.selected {
+    border-color: #38bdf8;
+    background: #164e63;
+    color: #e0f2fe;
   }
 }
