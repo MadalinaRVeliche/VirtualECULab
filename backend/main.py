@@ -27,12 +27,15 @@ def get_lessons():
     return [
         {
             "id": 1,
-            "title": "Primul eveniment CAPL",
+            "title": "Your first CAPL event",
             "description": (
-                "Evenimentul on start se execută la pornirea simulării. "
-                "Funcția write afișează un mesaj în consola simulatorului."
+                "The on start event runs when the simulation starts. "
+                "The write function displays a message in the simulator console."
             ),
-            "code": 'on start\n{\n  write("Salut, ECU!");\n}',
+            "task": (
+                "Write an on start event that prints exactly one message: ECU ready"
+            ),
+            "code": 'on start\n{\n  write("Hello, ECU!");\n}',
         }
     ]
 
@@ -52,7 +55,7 @@ def simulate(request: SimulationRequest):
     if event_match is None:
         raise HTTPException(
             status_code=400,
-            detail="Codul trebuie să conțină un singur eveniment on start.",
+            detail="Code must contain a single on start event.",
         )
 
     body = event_match.group(1)
@@ -71,8 +74,8 @@ def simulate(request: SimulationRequest):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "În on start sunt acceptate doar instrucțiuni "
-                    'write("mesaj");, fără secvențe de escape.'
+                    'Only write("message"); statements are supported '
+                    "inside on start. Escape sequences are not supported."
                 ),
             )
 
@@ -80,3 +83,30 @@ def simulate(request: SimulationRequest):
         position = instruction.end()
 
     return {"output": output}
+
+
+class ExerciseSubmission(BaseModel):
+    code: str
+
+
+@app.post("/lessons/{lesson_id}/check")
+def check_exercise(lesson_id: int, submission: ExerciseSubmission):
+    if lesson_id != 1:
+        raise HTTPException(
+            status_code=404,
+            detail="Lesson not found.",
+        )
+
+    result = simulate(SimulationRequest(code=submission.code))
+    expected_output = ["ECU ready"]
+    passed = result["output"] == expected_output
+
+    return {
+        "passed": passed,
+        "output": result["output"],
+        "message": (
+            "Correct! You completed the exercise."
+            if passed
+            else "Expected exactly one message: ECU ready"
+        ),
+    }
