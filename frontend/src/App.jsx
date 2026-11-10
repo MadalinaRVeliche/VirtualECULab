@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import CanTrace from "./CanTrace";
+import LearningPanel from "./LearningPanel";
 
 const API_URL = "http://127.0.0.1:8000";
 
@@ -163,6 +164,7 @@ function App() {
   const [error, setError] = useState("");
   const [progressError, setProgressError] = useState("");
   const [frames, setFrames] = useState([]);
+  const [activeTab, setActiveTab] = useState("practice");
 
   useEffect(() => {
     let active = true;
@@ -215,6 +217,7 @@ function App() {
         }
       }
     }
+
     loadLessons();
     loadProgress();
 
@@ -232,6 +235,7 @@ function App() {
 
     setFrames((current) => [...current, ...rows]);
   }
+
   function markCompleted(lessonId) {
     setCompletedLessonIds((current) =>
       current.includes(lessonId) ? current : [...current, lessonId],
@@ -247,41 +251,59 @@ function App() {
       <h1>Virtual ECU Lab</h1>
       <p>Learn CAPL step by step.</p>
 
-      {loading && <p>Loading lessons...</p>}
-      {error && <p role="alert">{error}</p>}
-      {progressError && <p role="alert">{progressError}</p>}
+      <nav className="learning-navigation" aria-label="Learning sections">
+        {["theory", "practice", "quiz"].map((tab) => (
+          <button
+            key={tab}
+            className={activeTab === tab ? "selected" : ""}
+            aria-pressed={activeTab === tab}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
+      </nav>
 
-      {!loading && !error && lessons.length > 0 && (
-        <nav className="lesson-navigation" aria-label="Lessons">
-          {lessons.map((lesson) => (
-            <button
-              key={lesson.id}
-              className={lesson.id === selectedLessonId ? "selected" : ""}
-              aria-pressed={lesson.id === selectedLessonId}
-              onClick={() => setSelectedLessonId(lesson.id)}
-            >
-              {lesson.id}. {lesson.title}
-              {completedLessonIds.includes(lesson.id) && (
-                <span className="completion-badge"> Completed</span>
-              )}
-            </button>
-          ))}
-        </nav>
-      )}
+      <LearningPanel mode={activeTab} />
 
-      {selectedLesson && (
-        <LessonEditor
-          key={selectedLesson.id}
-          lesson={selectedLesson}
-          onComplete={markCompleted}
-          onTransmit={(newFrames) => recordFrames(newFrames, "CAPL Tx")}
+      <section hidden={activeTab !== "practice"}>
+        {loading && <p>Loading lessons...</p>}
+        {error && <p role="alert">{error}</p>}
+        {progressError && <p role="alert">{progressError}</p>}
+
+        {!loading && !error && lessons.length > 0 && (
+          <nav className="lesson-navigation" aria-label="Lessons">
+            {lessons.map((lesson) => (
+              <button
+                key={lesson.id}
+                className={lesson.id === selectedLessonId ? "selected" : ""}
+                aria-pressed={lesson.id === selectedLessonId}
+                onClick={() => setSelectedLessonId(lesson.id)}
+              >
+                {lesson.id}. {lesson.title}
+                {completedLessonIds.includes(lesson.id) && (
+                  <span className="completion-badge"> Completed</span>
+                )}
+              </button>
+            ))}
+          </nav>
+        )}
+
+        {selectedLesson && (
+          <LessonEditor
+            key={selectedLesson.id}
+            lesson={selectedLesson}
+            onComplete={markCompleted}
+            onTransmit={(newFrames) => recordFrames(newFrames, "CAPL Tx")}
+          />
+        )}
+
+        <CanTrace
+          frames={frames}
+          onInspectFrame={(frame) => recordFrames([frame], "Preview")}
+          onClear={() => setFrames([])}
         />
-      )}
-      <CanTrace
-        frames={frames}
-        onInspectFrame={(frame) => recordFrames([frame], "Preview")}
-        onClear={() => setFrames([])}
-      />
+      </section>
     </main>
   );
 }

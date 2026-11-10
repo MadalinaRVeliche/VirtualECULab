@@ -139,94 +139,162 @@ article > div [role="alert"],
     width: 100%;
     margin-right: 0;
   }
-  .lesson-navigation {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 24px;
-  }
+}
 
-  .lesson-navigation button {
-    margin: 0;
-    text-align: left;
-  }
+.lesson-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
 
-  .lesson-navigation button.selected {
-    border-color: #38bdf8;
-    background: #164e63;
-    color: #e0f2fe;
-  }
-  .completion-badge {
-    display: inline-block;
-    margin-left: 10px;
-    padding: 3px 8px;
-    border: 1px solid #34785d;
-    border-radius: 999px;
-    background: #12382c;
-    color: #a7f3d0;
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-  .can-trace {
-    margin-top: 32px;
-    padding: 28px;
-    border: 1px solid #29364d;
-    border-radius: 18px;
-    background: #111c30;
-  }
+.lesson-navigation button {
+  margin: 0;
+  text-align: left;
+}
 
-  .can-trace p,
-  .can-trace caption {
-    color: #b6c2d5;
-    line-height: 1.6;
-  }
+.lesson-navigation button.selected {
+  border-color: #38bdf8;
+  background: #164e63;
+  color: #e0f2fe;
+}
 
-  .can-trace input {
-    display: block;
-    width: 100%;
-    margin: 10px 0 18px;
-    padding: 12px;
-    border: 1px solid #475569;
-    border-radius: 8px;
-    background: #080f1e;
-    color: #a7f3d0;
-    font: inherit;
-    font-family: Consolas, monospace;
-  }
+.completion-badge {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 3px 8px;
+  border: 1px solid #34785d;
+  border-radius: 999px;
+  background: #12382c;
+  color: #a7f3d0;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.can-trace {
+  margin-top: 32px;
+  padding: 28px;
+  border: 1px solid #29364d;
+  border-radius: 18px;
+  background: #111c30;
+}
 
-  .can-trace input:focus-visible {
-    outline: 3px solid #38bdf8;
-    outline-offset: 3px;
-  }
+.can-trace p,
+.can-trace caption {
+  color: #b6c2d5;
+  line-height: 1.6;
+}
 
-  .trace-table-wrapper {
-    overflow-x: auto;
-  }
+.can-trace input {
+  display: block;
+  width: 100%;
+  margin: 10px 0 18px;
+  padding: 12px;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  background: #080f1e;
+  color: #a7f3d0;
+  font: inherit;
+  font-family: Consolas, monospace;
+}
 
-  .can-trace table {
-    width: 100%;
-    border-collapse: collapse;
-    text-align: left;
-  }
+.can-trace input:focus-visible {
+  outline: 3px solid #38bdf8;
+  outline-offset: 3px;
+}
 
-  .can-trace caption {
-    padding: 12px 0;
-    text-align: left;
-    font-size: 0.85rem;
-  }
+.trace-table-wrapper {
+  overflow-x: auto;
+}
 
-  .can-trace th,
-  .can-trace td {
-    padding: 12px;
-    border-bottom: 1px solid #29364d;
-    white-space: nowrap;
-  }
+.can-trace table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
 
-  .can-trace th {
-    color: #7dd3fc;
-  }
+.can-trace caption {
+  padding: 12px 0;
+  text-align: left;
+  font-size: 0.85rem;
+}
 
-  .can-trace td {
-    font-family: Consolas, monospace;
-  }
+.can-trace th,
+.can-trace td {
+  padding: 12px;
+  border-bottom: 1px solid #29364d;
+  white-space: nowrap;
+}
+
+.can-trace th {
+  color: #7dd3fc;
+}
+
+.can-trace td {
+  font-family: Consolas, monospace;
+}
+
+.learning-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.learning-navigation button {
+  margin: 0;
+}
+
+.learning-navigation button.selected {
+  border-color: #38bdf8;
+  background: #164e63;
+  color: #e0f2fe;
+}
+
+.learning-panel {
+  padding: 28px;
+  margin-bottom: 24px;
+  border: 1px solid #29364d;
+  border-radius: 18px;
+  background: #111c30;
+}
+
+.learning-panel p,
+.learning-panel li {
+  line-height: 1.7;
+}
+
+.learning-panel pre {
+  padding: 16px;
+  border-radius: 8px;
+  background: #080f1e;
+}
+
+.learning-panel fieldset {
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid #475569;
+  border-radius: 10px;
+}
+
+.learning-panel legend {
+  padding: 0 8px;
+  line-height: 1.6;
+}
+
+.learning-panel .quiz-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0;
+  color: #e5eaf3;
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.quiz-option input {
+  margin-top: 5px;
+  flex-shrink: 0;
 }
