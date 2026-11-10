@@ -10,7 +10,7 @@ function LessonEditor({ lesson, onComplete }) {
   const [running, setRunning] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
-  async function submitCode(checkExercise) {
+  async function submitCode(checkExercise, event = "start", key = null) {
     setRunning(true);
     setOutput([]);
     setError("");
@@ -26,7 +26,7 @@ function LessonEditor({ lesson, onComplete }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify(checkExercise ? { code } : { code, event, key }),
       });
 
       const data = await response.json();
@@ -78,6 +78,13 @@ function LessonEditor({ lesson, onComplete }) {
 
       <label htmlFor={`code-${lesson.id}`}>CAPL code</label>
 
+      {lesson.id === 3 && (
+        <p>
+          Run triggers simulation startup. Press A sends the lowercase key{" "}
+          <code>a</code> to the simulator.
+        </p>
+      )}
+
       <textarea
         id={`code-${lesson.id}`}
         value={code}
@@ -102,6 +109,15 @@ function LessonEditor({ lesson, onComplete }) {
       <button onClick={() => submitCode(false)} disabled={running}>
         {running ? "Processing..." : "Run"}
       </button>
+
+      {lesson.id === 3 && (
+        <button
+          onClick={() => submitCode(false, "key", "a")}
+          disabled={running}
+        >
+          Press A
+        </button>
+      )}
 
       <button onClick={() => submitCode(true)} disabled={running}>
         Check exercise

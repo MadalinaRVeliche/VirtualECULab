@@ -119,12 +119,12 @@ def test_exercise_returns_404_for_unknown_lesson():
     assert response.status_code == 404
 
 
-def test_lessons_include_both_exercises():
+def test_lessons_include_all_exercises():
     response = client.get("/lessons")
 
     assert response.status_code == 200
     lessons = response.json()
-    assert [lesson["id"] for lesson in lessons] == [1, 2]
+    assert [lesson["id"] for lesson in lessons] == [1, 2, 3]
     assert all(lesson["task"] for lesson in lessons)
 
 
@@ -178,3 +178,87 @@ def test_second_exercise_rejects_reversed_order():
 
     assert response.status_code == 200
     assert response.json()["passed"] is False
+
+
+def test_keyboard_event_does_not_run_on_start():
+    response = client.post(
+        "/simulate",
+        json={"code": """on key 'a' { write("Pressed"); }"""},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"output": []}
+
+
+def test_keyboard_event_runs_for_matching_key():
+    response = client.post(
+        "/simulate",
+        json={
+            "code": """on key 'a' { write("Pressed"); }""",
+            "event": "key",
+            "key": "a",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"output": ["Pressed"]}
+
+
+def test_keyboard_event_ignores_other_keys():
+    response = client.post(
+        "/simulate",
+        json={
+            "code": """on key 'a' { write("Pressed"); }""",
+            "event": "key",
+            "key": "b",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"output": []}
+
+
+def test_start_event_does_not_run_on_key_press():
+    response = client.post(
+        "/simulate",
+        json={
+            "code": 'on start { write("Started"); }',
+            "event": "key",
+            "key": "a",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"output": []}
+
+
+def test_invalid_keyboard_body_is_rejected_without_trigger():
+    response = client.post(
+        "/simulate",
+        json={"code": "on key 'a' { unknown(); }"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_third_exercise_saves_completion():
+    response = client.post(
+        "/lessons/3/check",
+        json={"code": """on key 'a' { write("Key A pressed"); }"""},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["passed"] is True
+    assert response.json()["output"] == ["Key A pressed"]
+    assert client.get("/progress").json() == {"completed_lesson_ids": [3]}
+
+
+def test_third_exercise_rejects_start_event():
+    response = client.post(
+        "/lessons/3/check",
+        json={"code": 'on start { write("Key A pressed"); }'},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["passed"] is False
+    assert client.get("/progress").json() == {"completed_lesson_ids": []}

@@ -1,8 +1,9 @@
 import re
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -57,17 +58,38 @@ def get_lessons():
                 'on start\n{\n  write("First message");\n  write("Second message");\n}'
             ),
         },
+        {
+            "id": 3,
+            "title": "Keyboard events",
+            "description": (
+                "An on key event runs when its matching key is pressed. "
+                "Starting the simulation does not trigger this event."
+            ),
+            "task": (
+                "Write an on key 'a' event that prints exactly one message: "
+                "Key A pressed"
+            ),
+            "code": ("on key 'a'\n{\n  write(\"Your message\");\n}"),
+        },
     ]
 
 
 class SimulationRequest(BaseModel):
     code: str
+    event: Literal["start", "key"] = "start"
+    key: str | None = Field(default=None, min_length=1, max_length=1)
 
 
 @app.post("/simulate")
 def simulate(request: SimulationRequest):
+    if request.event == "key" and request.key is None:
+        raise HTTPException(
+            status_code=400,
+            detail="A key event requires a single key character.",
+        )
+
     event_match = re.fullmatch(
-        r"\s*on\s+start\s*\{(.*)\}\s*",
+        r"\s*on\s+(start|key\s+'([^'\\\r\n])')\s*\{(.*)\}\s*",
         request.code,
         flags=re.DOTALL,
     )
@@ -75,10 +97,13 @@ def simulate(request: SimulationRequest):
     if event_match is None:
         raise HTTPException(
             status_code=400,
-            detail="Code must contain a single on start event.",
+            detail=("Code must contain a single on start or on key 'character' event."),
         )
 
-    body = event_match.group(1)
+    declared_event = "start" if event_match.group(1) == "start" else "key"
+    declared_key = event_match.group(2)
+    body = event_match.group(3)
+
     instruction_pattern = re.compile(r'\s*write\s*\(\s*"([^"\\\r\n]*)"\s*\)\s*;')
 
     output = []
@@ -94,15 +119,19 @@ def simulate(request: SimulationRequest):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    'Only write("message"); statements are supported '
-                    "inside on start. Escape sequences are not supported."
+                    'Only write("message"); statements are supported. '
+                    "Escape sequences are not supported."
                 ),
             )
 
         output.append(instruction.group(1))
         position = instruction.end()
 
-    return {"output": output}
+    should_execute = declared_event == request.event and (
+        declared_event == "start" or declared_key == request.key
+    )
+
+    return {"output": output if should_execute else []}
 
 
 class ExerciseSubmission(BaseModel):
@@ -118,6 +147,7 @@ def check_exercise(
     expected_outputs = {
         1: ["ECU ready"],
         2: ["Starting ECU", "System ready"],
+        3: ["Key A pressed"],
     }
 
     if lesson_id not in expected_outputs:
@@ -126,7 +156,13 @@ def check_exercise(
             detail="Lesson not found.",
         )
 
-    result = simulate(SimulationRequest(code=submission.code))
+    result = simulate(
+        SimulationRequest(
+            code=submission.code,
+            event="key" if lesson_id == 3 else "start",
+            key="a" if lesson_id == 3 else None,
+        )
+    )
     expected_output = expected_outputs[lesson_id]
     passed = result["output"] == expected_output
 

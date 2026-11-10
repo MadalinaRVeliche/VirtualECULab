@@ -89,3 +89,66 @@ test("keeps completion visible after refreshing", async ({ page }) => {
     "Completed",
   );
 });
+
+test("triggers a keyboard event only when its key is pressed", async ({
+  page,
+}) => {
+  await page
+    .getByRole("button", {
+      name: /3\. Keyboard events/,
+    })
+    .click();
+
+  await page.getByLabel("CAPL code").fill(`
+    on key 'a'
+    {
+      write("Key A pressed");
+    }
+  `);
+
+  await page
+    .getByRole("button", {
+      name: "Run",
+      exact: true,
+    })
+    .click();
+
+  await expect(
+    page.getByRole("button", { name: "Run", exact: true }),
+  ).toBeEnabled();
+
+  await expect(
+    page.getByText("No output to display.", { exact: true }),
+  ).toBeVisible();
+
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.locator("article pre")).toHaveCount(0);
+
+  await page
+    .getByRole("button", {
+      name: "Press A",
+      exact: true,
+    })
+    .click();
+
+  await expect(page.locator("article pre")).toHaveText("Key A pressed");
+
+  await page
+    .getByRole("button", {
+      name: "Check exercise",
+      exact: true,
+    })
+    .click();
+
+  await expect(page.getByRole("status")).toHaveText(
+    "Correct! You completed the exercise.",
+  );
+
+  await expect(
+    page
+      .getByRole("button", {
+        name: /3\. Keyboard events/,
+      })
+      .locator(".completion-badge"),
+  ).toHaveText("Completed");
+});
