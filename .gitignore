@@ -3,6 +3,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 
 # Frontend
 node_modules/
@@ -17,6 +18,9 @@ dist/
 *.db
 *.sqlite
 *.sqlite3
+
+# Jurnale locale
+*.log
 
 # Editor și sistem
 .vscode/

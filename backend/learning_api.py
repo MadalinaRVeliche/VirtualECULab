@@ -104,7 +104,8 @@ class ModuleSubmission(BaseModel):
 
 @router.post("/modules/{module_id}/check")
 def check_module(module_id: int, request: ModuleSubmission, db: DB):
-    require_module(module_id)
+    if require_module(module_id)["kind"] == "theory":
+        raise HTTPException(404, "This lesson has no practical exercise.")
     try:
         result = assess(module_id, request.code, request.payload, request.challenge)
     except (ValueError, RecursionError, KeyError) as exc:
@@ -169,9 +170,14 @@ def learning_progress(db: DB):
 
 
 @router.get("/modules/{module_id}/quiz")
-def new_quiz(module_id: int, db: DB, revision: bool = False):
+def new_quiz(
+    module_id: int, db: DB, revision: bool = False, previous_session: UUID | None = None
+):
     module = require_module(module_id)
-    bank = list(module["quiz_bank"])
+    unique = {}
+    for question in module["quiz_bank"]:
+        unique.setdefault(quiz_prompt_key(question), question)
+    bank = list(unique.values())
     random.SystemRandom().shuffle(bank)
     if revision:
         attempts = db.scalars(
@@ -184,11 +190,57 @@ def new_quiz(module_id: int, db: DB, revision: bool = False):
             for feedback in attempt.result["feedback"]:
                 (missed.discard if feedback["correct"] else missed.add)(feedback["id"])
         bank.sort(key=lambda q: q["id"] not in missed)
-    return save_quiz_session(module_id, bank[: 5 if module_id == 1 else 4], db)
+    else:
+        sessions = db.scalars(
+            select(QuizSession)
+            .where(QuizSession.module_id == module_id)
+            .order_by(QuizSession.created_at.desc(), QuizSession.id.desc())
+            .execution_options(yield_per=32)
+        )
+        recency = {}
+        previous = None
+        try:
+            for rank, session in enumerate(sessions):
+                if previous is None:
+                    previous = session
+                for question in session.questions:
+                    key = quiz_prompt_key(question)
+                    if key in unique:
+                        recency.setdefault(key, rank)
+                if len(recency) == len(unique):
+                    break
+        finally:
+            sessions.close()
+        if previous_session is not None:
+            current = db.get(QuizSession, str(previous_session))
+            if current is not None and current.module_id == module_id:
+                previous = current
+        if previous is not None:
+            previous_prompts = {
+                quiz_prompt_key(question) for question in previous.questions
+            }
+            bank = [
+                question
+                for question in bank
+                if quiz_prompt_key(question) not in previous_prompts
+            ]
+        bank.sort(
+            key=lambda question: -recency.get(quiz_prompt_key(question), float("inf"))
+        )
+    return save_quiz_session(module_id, bank[:10], db)
+
+
+def quiz_prompt_key(question):
+    return " ".join(question["prompt"].casefold().split())
 
 
 def save_quiz_session(module_id, chosen, db):
-    session = QuizSession(id=str(uuid4()), module_id=module_id, questions=chosen)
+    session = QuizSession(
+        id=str(uuid4()),
+        module_id=module_id,
+        questions=chosen,
+        created_at=datetime.now(UTC),
+    )
     db.add(session)
     db.commit()
     return {

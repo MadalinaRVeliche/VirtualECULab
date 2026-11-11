@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, func
+from sqlalchemy import JSON, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
@@ -16,9 +16,6 @@ class LessonProgress(Base):
         server_default=func.now(),
         nullable=False,
     )
-
-
-from sqlalchemy import JSON, String
 
 
 class LearningMilestone(Base):

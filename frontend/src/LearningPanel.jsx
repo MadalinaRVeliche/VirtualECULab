@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import TheoryDetails from "./TheoryDetails";
 
 const canoeWindows = [
   ["Trace Window", "Mesaje CAN, ID-uri, payload, timestamp-uri, erori"],
@@ -295,7 +296,7 @@ function RomanianTheoryReference() {
         </li>
       </ul>
 
-      <h3>7. Debugging tips</h3>
+      <h3>7. Debugging — ce spun la interviu?</h3>
       <ol>
         <li>
           <strong>Precondiții:</strong> ECU este READY? Starea inițială e
@@ -344,308 +345,90 @@ function RomanianTheoryReference() {
   );
 }
 
-export default function LearningPanel({
-  module,
-  mode,
-  progress,
-  courseProgress,
-  onUpdate,
-}) {
+export default function LearningPanel({ module, modules, mode }) {
   const [quiz, setQuiz] = useState(null);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
+  const [historyError, setHistoryError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
-
   useEffect(() => {
-    if (mode !== "quiz" || loaded) return;
+    if (mode !== "Quiz" || loaded) return;
     const controller = new AbortController();
-    api(`/modules/${module.id}/quiz`, undefined, controller.signal)
-      .then((data) => {
-        setQuiz(data);
-        setLoaded(true);
-        setError("");
-      })
-      .catch((err) => {
-        if (err.name !== "AbortError") setError(err.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setBusy(false);
-      });
+    api(`/modules/${module.id}/quiz`, undefined, controller.signal).then((data) => {
+      setQuiz(data); setLoaded(true); setError("");
+    }).catch((err) => { if (err.name !== "AbortError") setError(err.message); }).finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
   }, [mode, loaded, module.id]);
 
   useEffect(() => {
-    if (mode !== "progress") return;
+    if (mode !== "Quiz") return;
     const controller = new AbortController();
-    api(`/modules/${module.id}/quiz-history`, undefined, controller.signal)
-      .then(setHistory)
-      .catch((err) => {
-        if (err.name !== "AbortError") setError(err.message);
-      });
+    api(`/modules/${module.id}/quiz-history`, undefined, controller.signal).then((entries) => {
+      setHistory(entries);
+      setHistoryError("");
+    }).catch((err) => { if (err.name !== "AbortError") setHistoryError(err.message); });
     return () => controller.abort();
-  }, [mode, module.id]);
+  }, [mode, module.id, result]);
 
   async function newQuiz(revision = false) {
-    setBusy(true);
-    setError("");
-    setResult(null);
+    setBusy(true); setError("");
     try {
-      setQuiz(await api(`/modules/${module.id}/quiz?revision=${revision}`));
+      const params = new URLSearchParams({ revision: String(revision) });
+      if (quiz) params.set("previous_session", quiz.session_id);
+      setQuiz(await api(`/modules/${module.id}/quiz?${params}`));
       setAnswers({});
+      setResult(null);
       setLoaded(true);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   }
 
   async function grade(event) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
+    event.preventDefault(); setBusy(true); setError("");
     try {
-      const graded = await api(`/modules/${module.id}/quiz`, {
-        session_id: quiz.session_id,
-        submission_id: crypto.randomUUID(),
-        answers,
-      });
+      const graded = await api(`/modules/${module.id}/quiz`, { session_id: quiz.session_id, submission_id: crypto.randomUUID(), answers });
       setResult(graded);
-      onUpdate();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   }
 
-  async function reviewed() {
-    setBusy(true);
-    setError("");
-    try {
-      await api(`/modules/${module.id}/theory-reviewed`, {});
-      onUpdate();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  if (mode === "Theory") return <section className="learning-panel">
+    <RomanianTheoryReference />
+    <TheoryDetails modules={modules} />
+    <h3>Reference reading</h3>
+    <ul>{module.sources.map((source) => <li key={source.url}>
+      <a href={source.url} target="_blank" rel="noreferrer">{source.label}</a>
+    </li>)}</ul>
+  </section>;
 
-  if (["practice", "challenges"].includes(mode)) return null;
-  if (mode === "theory")
-    return (
-      <section className="learning-panel">
-        <RomanianTheoryReference />
-        <h3>Reference reading</h3>
-        <ul>
-          {module.sources.map((source) => (
-            <li key={source.url}>
-              <a href={source.url} target="_blank" rel="noreferrer">
-                {source.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-        {error && <p role="alert">{error}</p>}
-        <button onClick={reviewed} disabled={busy || progress.theory_reviewed}>
-          {progress.theory_reviewed
-            ? "Theory reviewed"
-            : "Mark theory reviewed"}
-        </button>
-        <p className="muted">
-          Reviewed means you marked it read. Quiz results and practical evidence
-          are tracked separately.
-        </p>
-      </section>
-    );
+  if (mode !== "Quiz") return null;
 
-  if (mode === "progress")
-    return (
-      <section className="learning-panel">
-        <h2>Learning record</h2>
-        <div className="milestone-grid">
-          <div>
-            <small>Theory</small>
-            <strong>
-              {progress.theory_reviewed ? "Reviewed" : "Not reviewed"}
-            </strong>
-          </div>
-          <div>
-            <small>Practical</small>
-            <strong>
-              {progress.practical_completed ? "Completed" : "Not completed"}
-            </strong>
-          </div>
-          <div>
-            <small>Challenge</small>
-            <strong>
-              {progress.challenge_completed ? "Completed" : "Not completed"}
-            </strong>
-          </div>
-          <div>
-            <small>Best quiz</small>
-            <strong>
-              {progress.best_percent == null
-                ? "No attempts"
-                : `${progress.best_percent}%`}
-            </strong>
-          </div>
-        </div>
-        <p>{progress.quiz_attempts || 0} saved quiz attempts</p>
-        <p>
-          Revision topics:{" "}
-          {progress.missed_topics?.join(", ") ||
-            "No outstanding missed topics recorded."}
-        </p>
-        {error && <p role="alert">{error}</p>}
-        <h3>Achievements</h3>
-        <ul>
-          <li>
-            {courseProgress[4]?.practical_completed ? "Earned" : "Not yet"} ·
-            CAN transmitter — complete the speed transmission practical.
-          </li>
-          <li>
-            {courseProgress[6]?.practical_completed &&
-            courseProgress[7]?.challenge_completed
-              ? "Earned"
-              : "Not yet"}{" "}
-            · Timing detective — complete periodic traffic and the watchdog
-            challenge.
-          </li>
-          <li>
-            {courseProgress[9]?.practical_completed &&
-            courseProgress[9]?.best_percent >= 75
-              ? "Earned"
-              : "Not yet"}{" "}
-            · E2E analyst — complete the E2E practical and score at least 75% on
-            its quiz.
-          </li>
-          <li>
-            {courseProgress[10]?.challenge_completed &&
-            courseProgress[11]?.practical_completed
-              ? "Earned"
-              : "Not yet"}{" "}
-            · ADAS investigator — complete the deadline challenge and ADAS
-            practical.
-          </li>
-        </ul>
-        <h3>Recent attempts</h3>
-        {!history.length ? (
-          <p>No attempts yet.</p>
-        ) : (
-          <ol>
-            {history.map((attempt) => (
-              <li key={attempt.id}>
-                {attempt.score}/{attempt.total} ·{" "}
-                {new Date(attempt.created_at).toLocaleString()} ·{" "}
-                {attempt.missed_topics.join(", ") || "All correct"}
-              </li>
-            ))}
-          </ol>
-        )}
-        <p className="muted">
-          Records belong to one local learner. There is no account isolation
-          yet.
-        </p>
-      </section>
-    );
-
-  return (
-    <section className="learning-panel" aria-label="Module quiz">
-      <h2>Knowledge check</h2>
-      <p>
-        Answer every question. Grading and attempt history are saved by the
-        backend.
-      </p>
-      <div className="toolbar">
-        <button onClick={() => newQuiz(false)} disabled={busy}>
-          New quiz
-        </button>
-        <button onClick={() => newQuiz(true)} disabled={busy}>
-          Revise missed topics
-        </button>
-      </div>
-      {error && (
-        <p role="alert">
-          {error} <button onClick={() => newQuiz(false)}>Retry quiz</button>
-        </p>
-      )}
-      {!quiz && !error && <p>Loading quiz...</p>}
-      {quiz && (
-        <form onSubmit={grade}>
-          {quiz.questions.map((question, index) => {
-            const feedback = result?.feedback.find(
-              (entry) => entry.id === question.id,
-            );
-            return (
-              <fieldset key={question.id}>
-                <legend>
-                  {index + 1}. {question.prompt}
-                </legend>
-                {question.options.map((option, optionIndex) => (
-                  <label className="quiz-option" key={optionIndex}>
-                    <input
-                      type="radio"
-                      name={`${module.id}-${question.id}`}
-                      checked={answers[question.id] === optionIndex}
-                      disabled={busy}
-                      onChange={() => {
-                        setAnswers((previous) => ({
-                          ...previous,
-                          [question.id]: optionIndex,
-                        }));
-                        setResult(null);
-                      }}
-                    />
-                    <span>{option}</span>
-                  </label>
-                ))}
-                {feedback && (
-                  <p className={feedback.correct ? "success" : "warning"}>
-                    <strong>
-                      {feedback.correct ? "Correct. " : "Incorrect. "}
-                    </strong>
-                    Correct answer: {feedback.correct_answer}.{" "}
-                    {feedback.explanation}
-                  </p>
-                )}
-              </fieldset>
-            );
-          })}
-          <button
-            type="submit"
-            disabled={
-              busy ||
-              Object.keys(answers).length !== quiz.questions.length
-            }
-          >
-            {busy ? "Saving..." : "Grade quiz"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAnswers({});
-              setResult(null);
-            }}
-            disabled={busy}
-          >
-            Reset quiz
-          </button>
-        </form>
-      )}
-      {result && (
-        <p role="status" className="score">
-          Score: {result.score} / {result.total}
-        </p>
-      )}
-      <p className="muted">
-        New quizzes vary question order and bank selection. Revision prioritizes
-        previously missed questions; questions may recur.
-      </p>
-    </section>
-  );
+  return <section className="learning-panel" aria-label="Course quiz">
+    <h2>Knowledge check</h2><p>10 questions from the full course. Answer every question to see your score and explanations.</p>
+    <div className="toolbar"><button onClick={() => newQuiz(false)} disabled={busy || !loaded}>New quiz</button><button onClick={() => newQuiz(true)} disabled={busy || !loaded}>Revise missed topics</button></div>
+    {error && <p role="alert">{error} <button onClick={() => newQuiz(false)}>Retry quiz</button></p>}
+    {!quiz && !error && <p>Loading quiz...</p>}
+    {quiz && <form onSubmit={grade} aria-label="Quiz answers">
+      {quiz.questions.map((question, index) => {
+        const feedback = result?.feedback.find((entry) => entry.id === question.id);
+        return <fieldset key={question.id}><legend>{index + 1}. {question.prompt}</legend>
+          {question.options.map((option, optionIndex) => <label className="quiz-option" key={optionIndex}><input type="radio" name={`${module.id}-${question.id}`} checked={answers[question.id] === optionIndex} disabled={busy} onChange={() => { setAnswers((previous) => ({ ...previous, [question.id]: optionIndex })); setResult(null); }} /><span>{option}</span></label>)}
+          {feedback && <p className={feedback.correct ? "success" : "warning"}><strong>{feedback.correct ? "Correct. " : "Incorrect. "}</strong>Correct answer: {feedback.correct_answer}. {feedback.explanation}</p>}
+        </fieldset>;
+      })}
+      <button type="submit" disabled={busy || Object.keys(answers).length !== quiz.questions.length}>{busy ? "Saving..." : "Grade quiz"}</button>
+      <button type="button" onClick={() => { setAnswers({}); setResult(null); }} disabled={busy}>Reset quiz</button>
+    </form>}
+    {result && <p role="status" className="score">Score: {result.score} / {result.total}</p>}
+    <p className="muted">New quiz changes all 10 questions from the current set. Revise missed topics brings back questions you missed.</p>
+    <details className="quiz-history">
+      <summary>Quiz history</summary>
+      {historyError ? <p role="alert">{historyError}</p> : !history.length ? <p>No attempts yet.</p> : <ol>{history.map((attempt) => (
+        <li key={attempt.id}>{attempt.score}/{attempt.total} · {new Date(attempt.created_at).toLocaleString()}</li>
+      ))}</ol>}
+    </details>
+  </section>;
 }

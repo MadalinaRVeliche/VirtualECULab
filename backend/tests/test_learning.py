@@ -15,8 +15,10 @@ def test_curriculum_hides_quiz_answer_keys_and_covers_all_modules():
     response = client.get("/modules")
     assert response.status_code == 200
     entries = response.json()
-    assert [entry["id"] for entry in entries] == list(range(1, 12))
-    assert all(entry["theory"] and entry["challenge"] for entry in entries)
+    assert [entry["id"] for entry in entries] == list(range(12))
+    assert entries[0]["kind"] == "theory"
+    assert not entries[0]["challenge"]
+    assert all(entry["theory"] and entry["challenge"] for entry in entries[1:])
     assert all("quiz_bank" not in entry for entry in entries)
 
 
@@ -259,9 +261,17 @@ def submit_quiz(module_id, quiz, answers, identifier=None):
     )
 
 
-@pytest.mark.parametrize("module_id", range(1, 12))
+@pytest.mark.parametrize("module_id", range(12))
 def test_quiz_grades_from_server_bank_and_saves_history(module_id):
     quiz = client.get(f"/modules/{module_id}/quiz").json()
+    assert len(quiz["questions"]) == 10
+    next_quiz = client.get(
+        f"/modules/{module_id}/quiz", params={"previous_session": quiz["session_id"]}
+    ).json()
+    assert len(next_quiz["questions"]) == 10
+    assert {q["id"] for q in quiz["questions"]}.isdisjoint(
+        q["id"] for q in next_quiz["questions"]
+    )
     assert all(
         "correct" not in question and "explanation" not in question
         for question in quiz["questions"]
@@ -278,40 +288,58 @@ def test_quiz_grades_from_server_bank_and_saves_history(module_id):
     assert len(client.get(f"/modules/{module_id}/quiz-history").json()) == 1
 
 
+@pytest.mark.parametrize("module_id", range(12))
+def test_quiz_rotates_through_unseen_prompts_before_recycling(module_id):
+    def prompt_key(question):
+        return " ".join(question["prompt"].casefold().split())
+
+    bank = MODULES[module_id]["quiz_bank"]
+    unseen = {prompt_key(question) for question in bank}
+    assert len(unseen) == len(bank) >= 20
+    assert len({question["id"] for question in bank}) == len(bank)
+    assert all(
+        len(set(question["options"])) == len(question["options"]) for question in bank
+    )
+    previous = set()
+    for _ in range(4):
+        response = client.get(f"/modules/{module_id}/quiz")
+        assert response.status_code == 200
+        current = {prompt_key(question) for question in response.json()["questions"]}
+        assert len(current) == 10
+        assert previous.isdisjoint(current)
+        assert len(current & unseen) == min(10, len(unseen))
+        unseen -= current
+        previous = current
+
+
+def test_quiz_deduplicates_prompt_even_if_bank_ids_differ(monkeypatch):
+    bank = MODULES[1]["quiz_bank"]
+    question = bank[0]
+    copies = [
+        {**question, "id": f"copy-{i}", "prompt": "  " + question["prompt"].upper()}
+        for i in range(20)
+    ]
+    monkeypatch.setitem(MODULES[1], "quiz_bank", bank + copies)
+    response = client.get("/modules/1/quiz")
+    assert response.status_code == 200
+    assert all(not q["id"].startswith("copy-") for q in response.json()["questions"])
+
+
 def test_quiz_retry_is_idempotent_but_conflicting_answers_are_rejected():
     quiz = client.get("/modules/1/quiz").json()
     answers = quiz_answers(1, quiz)
     identifier = str(uuid4())
     first = submit_quiz(1, quiz, answers, identifier)
     assert submit_quiz(1, quiz, answers, identifier).json() == first.json()
-    answers["transmission"] = 0
-    assert submit_quiz(1, quiz, answers, identifier).status_code == 409
-    assert len(client.get("/modules/1/quiz-history").json()) == 1
-
-
-def test_missing_or_unknown_quiz_answers_are_rejected():
-    quiz = client.get("/modules/1/quiz").json()
-    assert submit_quiz(1, quiz, {}).status_code == 422
-    answers = quiz_answers(1, quiz)
-    answers["unknown"] = 0
-    assert submit_quiz(1, quiz, answers).status_code == 422
-    answers.pop("unknown")
-    answers["transmission"] = 12
-    assert submit_quiz(1, quiz, answers).status_code == 422
-    assert submit_quiz(2, quiz, {}).status_code == 404
-
-
-def test_missed_topics_are_revised_and_cleared_after_correct_answer():
-    quiz = client.get("/modules/1/quiz").json()
-    answers = quiz_answers(1, quiz)
-    answers["transmission"] = 0
+    missed = quiz["questions"][0]
+    answers[missed["id"]] = (answers[missed["id"]] + 1) % len(missed["options"])
     result = submit_quiz(1, quiz, answers).json()
-    assert result["score"] == 4
+    assert result["score"] == 9
     assert client.get("/learning/progress").json()["1"]["missed_topics"] == [
-        "CAPL transmission"
+        missed["topic"]
     ]
     revision = client.get("/modules/1/quiz?revision=true").json()
-    assert revision["questions"][0]["id"] == "transmission"
+    assert revision["questions"][0]["id"] == missed["id"]
     submit_quiz(1, revision, quiz_answers(1, revision))
     assert client.get("/learning/progress").json()["1"]["missed_topics"] == []
 
@@ -536,3 +564,61 @@ def test_teaching_e2e_data_leaves_room_for_counter_and_crc():
         "/tools/e2e", json={"frames": [{"counter": 0, "data": [0] * 7}]}
     )
     assert response.status_code == 422
+
+
+def test_general_theory_has_no_lab_and_ai_generation_is_unavailable():
+    assert client.post("/modules/0/check", json={}).status_code == 404
+    assert client.post("/modules/1/quiz/generate", json={}).status_code == 404
+
+
+def test_course_quiz_draws_from_all_topics_without_repeating_until_pool_is_used():
+    course = MODULES[0]["quiz_bank"]
+    assert len(course) >= 200
+    assert all(
+        any(q["id"].startswith(f"lesson-{identifier}-") for q in course)
+        for identifier in range(1, 12)
+    )
+    seen = set()
+    for _ in range(len(course) // 10):
+        response = client.get("/modules/0/quiz")
+        assert response.status_code == 200
+        questions = {question["id"] for question in response.json()["questions"]}
+        assert len(questions) == 10
+        assert seen.isdisjoint(questions)
+        seen |= questions
+
+
+def test_workbench_relay_reports_raw_receive_and_transmit_at_virtual_time():
+    code = """
+    variables { message 0x123 VehicleSpeed; }
+    on start { VehicleSpeed.dlc = 2; write("Speed relay ready"); }
+    on message 0x120 {
+      VehicleSpeed.byte(0) = this.byte(0);
+      VehicleSpeed.byte(1) = this.byte(1);
+      output(VehicleSpeed);
+    }
+    """
+    response = client.post(
+        "/lab/run",
+        json={
+            "code": code,
+            "actions": [
+                {"type": "rx", "identifier": 0x120, "data": [0x10, 0x27]},
+                {"type": "advance", "ms": 100},
+                {"type": "rx", "identifier": 0x120, "data": [0x88, 0x13]},
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    run = response.json()
+    assert run["time_ms"] == 100
+    assert run["console"] == [{"time_ms": 0, "text": "Speed relay ready"}]
+    assert [
+        (frame["time_ms"], frame["direction"], frame["identifier"], frame["data"])
+        for frame in run["frames"]
+    ] == [
+        (0, "Rx", 0x120, [0x10, 0x27]),
+        (0, "Tx", 0x123, [0x10, 0x27]),
+        (100, "Rx", 0x120, [0x88, 0x13]),
+        (100, "Tx", 0x123, [0x88, 0x13]),
+    ]

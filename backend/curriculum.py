@@ -2,6 +2,8 @@
 
 from copy import deepcopy
 
+from backend.quiz_bank import authored_questions
+
 SOURCES = [
     {
         "label": "Vector: CANoe Test Feature Set tutorial",
@@ -815,48 +817,6 @@ module(
 )
 
 
-# Numeric variants provide more than a reordering of the same four questions.
-for module_id in (4, 8):
-    for index, speed in enumerate((10, 20, 30, 40, 60, 80, 90, 120)):
-        raw = speed * 100
-        byte_text = f"{raw & 255:02X} {raw >> 8:02X}"
-        options = [f"{speed} km/h", f"{speed * 2} km/h", f"{speed / 10:g} km/h"]
-        correct = index % 3
-        options[0], options[correct] = options[correct], options[0]
-        MODULES[module_id]["quiz_bank"].append(
-            question(
-                f"speed-{speed}",
-                f"Unsigned little-endian bytes {byte_text}, factor 0.01, offset 0. Speed?",
-                options,
-                correct,
-                f"Raw {raw}; {raw} × 0.01 = {speed} km/h. Byte 0 is least significant.",
-                "Signal encoding",
-            )
-        )
-for period in (20, 50, 80, 100, 200):
-    MODULES[6]["quiz_bank"].append(
-        question(
-            f"period-{period}",
-            f"Tx timestamps are {period}, {period * 2}, {period * 3} ms. What is the interval?",
-            [f"{period} ms", f"{period * 3} ms", "Cannot subtract timestamps"],
-            0,
-            f"Adjacent timestamps differ by {period} ms.",
-            "Timing",
-        )
-    )
-for previous in (13, 14, 15):
-    following = (previous + 2) % 16
-    MODULES[9]["quiz_bank"].append(
-        question(
-            f"loss-{previous}",
-            f"Toy modulo-16 profile: last accepted {previous}, next {following}, valid CRC, maxLost=1. Status?",
-            ["OK_SOME_LOST", "REPEATED", "WRONG_CRC"],
-            0,
-            "Modulo delta is 2, which allows one missing frame under this stated rule.",
-            "Lost-message tolerance",
-        )
-    )
-
 INTERVIEW_PROMPTS = {
     1: "How would you prove that an ECU sent a CAN frame rather than merely logging a message?",
     2: "Explain how you would diagnose an incorrect sequence of transmissions.",
@@ -1014,10 +974,49 @@ for module_id, extra in ADVANCED_QUESTIONS.items():
     MODULES[module_id]["quiz_bank"].extend(extra)
 
 
+# Use a stable ID for the overview so existing lesson progress keeps its meaning.
+GENERAL_THEORY_ID = 0
+
+module(
+    GENERAL_THEORY_ID,
+    "General Theory",
+    "Referință în română pentru CAN, CANoe, CAPL, E2E și ADAS.",
+    "",
+    "",
+    [],
+    [],
+    kind="theory",
+)
+
+for identifier, lesson in MODULES.items():
+    for index, (key, topic, prompt, answer, distractors, explanation) in enumerate(
+        authored_questions(identifier)
+    ):
+        options = list(distractors)
+        correct = index % 3
+        options.insert(correct, answer)
+        lesson["quiz_bank"].append(
+            question(key, prompt, options, correct, explanation, topic)
+        )
+
+
+# Keep the overview's original ID and store the shared course quiz in its history.
+course_bank = MODULES[GENERAL_THEORY_ID]["quiz_bank"]
+course_prompts = {" ".join(q["prompt"].casefold().split()) for q in course_bank}
+for identifier, lesson in MODULES.items():
+    if identifier == GENERAL_THEORY_ID:
+        continue
+    for item in lesson["quiz_bank"]:
+        prompt = " ".join(item["prompt"].casefold().split())
+        if prompt not in course_prompts:
+            course_bank.append({**item, "id": f"lesson-{identifier}-{item['id']}"})
+            course_prompts.add(prompt)
+
+
 def public_modules():
     result = []
-    for entry in MODULES.values():
-        item = deepcopy(entry)
+    for identifier in sorted(MODULES):
+        item = deepcopy(MODULES[identifier])
         item.pop("quiz_bank")
         result.append(item)
     return result

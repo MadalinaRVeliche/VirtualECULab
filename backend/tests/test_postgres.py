@@ -38,10 +38,16 @@ def test_postgres_persists_learning_and_quiz_records():
             assert client.post("/modules/4/theory-reviewed").status_code == 200
             assert client.post("/modules/4/theory-reviewed").status_code == 200
             assert client.get("/learning/progress").json()["4"]["theory_reviewed"]
-            quiz = client.get("/modules/1/quiz").json()
+            quiz = client.get("/modules/0/quiz").json()
+            fresh_quiz = client.get(
+                "/modules/0/quiz", params={"previous_session": quiz["session_id"]}
+            ).json()
+            assert {q["id"] for q in quiz["questions"]}.isdisjoint(
+                q["id"] for q in fresh_quiz["questions"]
+            )
             from backend.curriculum import MODULES
 
-            bank = {q["id"]: q for q in MODULES[1]["quiz_bank"]}
+            bank = {q["id"]: q for q in MODULES[0]["quiz_bank"]}
             submission = {
                 "session_id": quiz["session_id"],
                 "submission_id": str(uuid4()),
@@ -49,13 +55,13 @@ def test_postgres_persists_learning_and_quiz_records():
                     q["id"]: bank[q["id"]]["correct"] for q in quiz["questions"]
                 },
             }
-            result = client.post("/modules/1/quiz", json=submission)
+            result = client.post("/modules/0/quiz", json=submission)
             assert result.status_code == 200, result.text
-            assert result.json()["score"] == 5
+            assert result.json()["score"] == result.json()["total"] == 10
             assert (
-                client.post("/modules/1/quiz", json=submission).json() == result.json()
+                client.post("/modules/0/quiz", json=submission).json() == result.json()
             )
-            assert client.get("/learning/progress").json()["1"]["best_percent"] == 100
+            assert client.get("/learning/progress").json()["0"]["best_percent"] == 100
             assert (
                 connection.execute(
                     text(

@@ -1,92 +1,37 @@
 import { test, expect } from "@playwright/test";
 
-test("switches between theory and practice", async ({ page }) => {
+test("shows general and applied theory with three course tabs", async ({ page }) => {
   await page.goto("/");
-
-  await page
-    .getByRole("button", {
-      name: "Theory",
-      exact: true,
-    })
-    .click();
-
-  await expect(
-    page.getByRole("heading", {
-      name: "Theory",
-      exact: true,
-    }),
-  ).toBeVisible();
-
-  await expect(page.getByLabel("CAPL code")).toBeHidden();
-
-  await page
-    .getByRole("button", {
-      name: "Practice",
-      exact: true,
-    })
-    .click();
-
-  await expect(page.getByLabel("CAPL code")).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Learning sections" });
+  await expect(nav.getByRole("button")).toHaveText(["Theory", "Quiz", "Workbench"]);
+  await expect(page.getByRole("heading", { name: /Controller Area Network/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Teorie aplicată" })).toBeVisible();
+  await page.getByText("Transmit vehicle speed", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Signal definition", exact: true })).toBeVisible();
 });
 
-test("grades the quiz and clears the result when an answer changes", async ({
-  page,
-}) => {
+test("grades a course quiz, saves it and replaces all ten prompts", async ({ page }) => {
   await page.goto("/");
-
-  await page
-    .getByRole("button", {
-      name: "Quiz",
-      exact: true,
-    })
-    .click();
-
-  const grade = page.getByRole("button", {
-    name: "Grade quiz",
-    exact: true,
-  });
-
+  await page.getByRole("button", { name: "Quiz", exact: true }).click();
+  const quiz = page.getByRole("region", { name: "Course quiz" });
+  const groups = quiz.getByRole("form", { name: "Quiz answers" }).getByRole("group");
+  await expect(groups).toHaveCount(10);
+  const grade = quiz.getByRole("button", { name: "Grade quiz" });
   await expect(grade).toBeDisabled();
-
-  const correctAnswers = [
-    "output(VehicleSpeed);",
-    "50 km/h",
-    "Trace window",
-    "No, because counter 7 is repeated",
-    "Wait for the required active state with a 100 ms deadline",
-  ];
-
-  for (const answer of correctAnswers) {
-    await page
-      .getByRole("radio", {
-        name: answer,
-        exact: true,
-      })
-      .check();
-  }
-
+  for (const group of await groups.all()) await group.getByRole("radio").first().check();
   await grade.click();
-
-  await expect(
-    page.getByText("Score: 5 / 5", {
-      exact: true,
-    }),
-  ).toBeVisible();
-
-  await page
-    .getByRole("radio", {
-      name: "100 km/h",
-      exact: true,
-    })
-    .check();
-
-  await expect(page.getByText("Score: 5 / 5", { exact: true })).toHaveCount(0);
-
-  await grade.click();
-
-  await expect(
-    page.getByText("Score: 4 / 5", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  const score = quiz.getByText(/^Score: \d+ \/ 10$/);
+  await expect(score).toBeVisible();
+  const previous = await quiz.locator("legend").allTextContents();
+  await quiz.getByRole("button", { name: "New quiz" }).click();
+  await expect(score).toHaveCount(0);
+  await expect(groups).toHaveCount(10);
+  const current = await quiz.locator("legend").allTextContents();
+  const prompts = (labels) => labels.map((label) => label.replace(/^\d+\. /, ""));
+  expect(new Set(prompts(current)).size).toBe(10);
+  expect(prompts(current).filter((prompt) => prompts(previous).includes(prompt))).toEqual([]);
+  await page.reload();
+  await page.getByRole("button", { name: "Quiz", exact: true }).click();
+  await quiz.getByText("Quiz history", { exact: true }).click();
+  await expect(quiz.getByText(/^\d+\/10 ·/).first()).toBeVisible();
 });
