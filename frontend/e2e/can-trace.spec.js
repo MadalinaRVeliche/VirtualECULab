@@ -23,6 +23,7 @@ test("inspects a CAN frame and clears the trace", async ({ page }) => {
   await expect(row.getByRole("cell")).toHaveText([
     "1",
     "Preview",
+    "—",
     "0x123",
     "Standard data",
     "2",
@@ -82,6 +83,7 @@ test("CAPL output adds a transmitted frame to the trace", async ({ page }) => {
   await expect(row.getByRole("cell")).toHaveText([
     "1",
     "CAPL Tx",
+    "—",
     "0x123",
     "Standard data",
     "2",

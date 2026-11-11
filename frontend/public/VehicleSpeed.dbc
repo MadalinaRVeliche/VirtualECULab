@@ -1,0 +1,7 @@
+VERSION "VirtualECULab teaching example"
+NS_ :
+BS_:
+BU_: SpeedECU DisplayECU
+BO_ 291 VehicleSpeed: 2 SpeedECU
+ SG_ Speed : 0|16@1+ (0.01,0) [0|655.35] "km/h" DisplayECU
+CM_ BO_ 291 "Educational example only; no OEM signal definition implied.";

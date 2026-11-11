@@ -12,7 +12,7 @@ test("switches between theory and practice", async ({ page }) => {
 
   await expect(
     page.getByRole("heading", {
-      name: "CAN frames and CAPL transmission",
+      name: "Theory",
       exact: true,
     }),
   ).toBeVisible();

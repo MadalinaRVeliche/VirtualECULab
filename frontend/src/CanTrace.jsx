@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 export default function CanTrace({ frames, onInspectFrame, onClear }) {
+  const uniqueId = useId();
+  const traceTitleId = `${uniqueId}-trace-title`;
+  const identifierId = `${uniqueId}-identifier`;
+  const dataId = `${uniqueId}-data`;
   const [identifier, setIdentifier] = useState("123");
   const [data, setData] = useState("10 27");
   const [error, setError] = useState("");
@@ -72,26 +76,26 @@ export default function CanTrace({ frames, onInspectFrame, onClear }) {
   }
 
   return (
-    <section className="can-trace" aria-labelledby="trace-title">
-      <h2 id="trace-title">CAN Trace</h2>
+    <section className="can-trace" aria-labelledby={traceTitleId}>
+      <h2 id={traceTitleId}>CAN Trace</h2>
       <p>
         Inspect frame previews and simulated CAPL transmissions. Identifiers and
         payload bytes are displayed in hexadecimal.
       </p>
 
       <form onSubmit={inspectFrame}>
-        <label htmlFor="can-identifier">CAN identifier (hex)</label>
+        <label htmlFor={identifierId}>CAN identifier (hex)</label>
         <input
-          id="can-identifier"
+          id={identifierId}
           value={identifier}
           onChange={(event) => setIdentifier(event.target.value)}
           disabled={busy}
           autoComplete="off"
         />
 
-        <label htmlFor="can-data">Data bytes (hex)</label>
+        <label htmlFor={dataId}>Data bytes (hex)</label>
         <input
-          id="can-data"
+          id={dataId}
           value={data}
           onChange={(event) => setData(event.target.value)}
           disabled={busy}
@@ -118,12 +122,13 @@ export default function CanTrace({ frames, onInspectFrame, onClear }) {
       <div className="trace-table-wrapper">
         <table>
           <caption>
-            Local simulated trace; cleared when the page reloads.
+            Local simulated trace; cleared when the page reloads. Timestamps are virtual lab time; — means unavailable.
           </caption>
           <thead>
             <tr>
               <th scope="col">#</th>
               <th scope="col">Source</th>
+              <th scope="col">Time (ms)</th>
               <th scope="col">Identifier</th>
               <th scope="col">Type</th>
               <th scope="col">DLC</th>
@@ -135,6 +140,7 @@ export default function CanTrace({ frames, onInspectFrame, onClear }) {
               <tr key={frame.rowId}>
                 <td>{index + 1}</td>
                 <td>{frame.source}</td>
+                <td>{frame.time_ms ?? "—"}</td>
                 <td>{frame.identifier_hex}</td>
                 <td>Standard data</td>
                 <td>{frame.dlc}</td>

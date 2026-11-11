@@ -10,9 +10,11 @@ from sqlalchemy.orm import Session
 from backend.can_frames import StandardCanFrame
 from backend.capl_can import simulate_can_program
 from backend.database import get_db
+from backend.learning_api import router as learning_router
 from backend.models import LessonProgress
 
 app = FastAPI(title="Virtual ECU Lab")
+app.include_router(learning_router)
 
 app.add_middleware(
     CORSMiddleware,
