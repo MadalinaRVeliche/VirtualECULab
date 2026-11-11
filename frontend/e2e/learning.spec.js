@@ -1,24 +1,56 @@
 import { test, expect } from "@playwright/test";
 
-test("shows general and applied theory with three course tabs", async ({ page }) => {
+test("opens an applied chapter and remembers the theory language", async ({
+  page,
+}) => {
   await page.goto("/");
-  const nav = page.getByRole("navigation", { name: "Learning sections" });
-  await expect(nav.getByRole("button")).toHaveText(["Theory", "Quiz", "Workbench"]);
-  await expect(page.getByRole("heading", { name: /Controller Area Network/ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Teorie aplicată" })).toBeVisible();
-  await page.getByText("Transmit vehicle speed", { exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Signal definition", exact: true })).toBeVisible();
+
+  const tabs = page.getByRole("navigation", { name: "Learning sections" });
+  await expect(tabs.getByRole("button")).toHaveText([
+    "Theory",
+    "Quiz",
+    "Workbench",
+  ]);
+
+  const contents = page.getByRole("navigation", { name: "Cuprins" });
+  await contents
+    .getByRole("link", { name: "Din cadrul CAN la viteza din grafic" })
+    .click();
+  await expect(page).toHaveURL(/#theory-can-dbc$/);
+
+  await page
+    .getByRole("combobox", { name: "Limba teoriei" })
+    .selectOption("en");
+  await expect(
+    page.getByRole("heading", { name: "Applied theory" }),
+  ).toBeVisible();
+
+  await page.reload();
+
+  await expect(
+    page.getByRole("combobox", { name: "Theory language" }),
+  ).toHaveValue("en");
+  await expect(
+    page.getByRole("heading", {
+      name: "From a CAN frame to speed on the graph",
+    }),
+  ).toBeVisible();
 });
 
-test("grades a course quiz, saves it and replaces all ten prompts", async ({ page }) => {
+test("grades a course quiz, saves it and replaces all ten prompts", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Quiz", exact: true }).click();
   const quiz = page.getByRole("region", { name: "Course quiz" });
-  const groups = quiz.getByRole("form", { name: "Quiz answers" }).getByRole("group");
+  const groups = quiz
+    .getByRole("form", { name: "Quiz answers" })
+    .getByRole("group");
   await expect(groups).toHaveCount(10);
   const grade = quiz.getByRole("button", { name: "Grade quiz" });
   await expect(grade).toBeDisabled();
-  for (const group of await groups.all()) await group.getByRole("radio").first().check();
+  for (const group of await groups.all())
+    await group.getByRole("radio").first().check();
   await grade.click();
   const score = quiz.getByText(/^Score: \d+ \/ 10$/);
   await expect(score).toBeVisible();
@@ -27,9 +59,12 @@ test("grades a course quiz, saves it and replaces all ten prompts", async ({ pag
   await expect(score).toHaveCount(0);
   await expect(groups).toHaveCount(10);
   const current = await quiz.locator("legend").allTextContents();
-  const prompts = (labels) => labels.map((label) => label.replace(/^\d+\. /, ""));
+  const prompts = (labels) =>
+    labels.map((label) => label.replace(/^\d+\. /, ""));
   expect(new Set(prompts(current)).size).toBe(10);
-  expect(prompts(current).filter((prompt) => prompts(previous).includes(prompt))).toEqual([]);
+  expect(
+    prompts(current).filter((prompt) => prompts(previous).includes(prompt)),
+  ).toEqual([]);
   await page.reload();
   await page.getByRole("button", { name: "Quiz", exact: true }).click();
   await quiz.getByText("Quiz history", { exact: true }).click();

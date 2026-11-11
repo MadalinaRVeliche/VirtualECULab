@@ -36,7 +36,7 @@ export default function App() {
       </nav>
       {active !== "Workbench" && error && <p role="alert">{error}</p>}
       {active !== "Workbench" && !overview && !error && <p>Loading course…</p>}
-      {overview && <LearningPanel module={overview} modules={modules} mode={active} />}
+      {overview && <LearningPanel module={overview} mode={active} />}
       <section hidden={active !== "Workbench"} aria-label="CAN workbench">
         <Workbench />
       </section>
