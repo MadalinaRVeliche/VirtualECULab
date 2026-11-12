@@ -5,6 +5,8 @@ from backend.main import app
 client = TestClient(app)
 
 
+# These tests cover the original single-handler endpoint used by the
+# introductory exercises. The Workbench runtime has its own test coverage.
 def test_simulator_returns_message():
     code = 'on start\n{\n  write("Hello, ECU!");\n}'
 
@@ -31,6 +33,7 @@ def test_simulator_accepts_extra_whitespace():
 
 
 def test_simulator_rejects_code_outside_event():
+    # A valid handler followed by extra code should still be rejected.
     code = 'on start { write("Salut!"); } write("Extra");'
 
     response = client.post("/simulate", json={"code": code})
@@ -82,6 +85,8 @@ def test_exercise_accepts_correct_output():
 
 
 def test_exercise_rejects_wrong_output():
+    # The submission is valid CAPL, so the API returns a failing verdict
+    # with HTTP 200. Invalid CAPL is covered separately as HTTP 400.
     response = client.post(
         "/lessons/1/check",
         json={"code": 'on start { write("Other message"); }'},
@@ -92,6 +97,7 @@ def test_exercise_rejects_wrong_output():
 
 
 def test_exercise_rejects_extra_output():
+    # Producing the expected line is insufficient if extra lines are emitted.
     response = client.post(
         "/lessons/1/check",
         json={"code": ('on start { write("ECU ready"); write("Extra"); }')},
@@ -145,6 +151,7 @@ def test_second_exercise_accepts_correct_order():
 def test_correct_answer_saves_progress_once():
     submission = {"code": 'on start { write("ECU ready"); }'}
 
+    # Submit twice to check that completion is stored once per lesson.
     for _ in range(2):
         response = client.post(
             "/lessons/1/check",
@@ -233,6 +240,8 @@ def test_start_event_does_not_run_on_key_press():
 
 
 def test_invalid_keyboard_body_is_rejected_without_trigger():
+    # The parser checks the body even though the default startup event
+    # would not execute this keyboard handler.
     response = client.post(
         "/simulate",
         json={"code": "on key 'a' { unknown(); }"},
@@ -254,6 +263,8 @@ def test_third_exercise_saves_completion():
 
 
 def test_third_exercise_rejects_start_event():
+    # The text matches, but the exercise sends a key event. A startup
+    # handler cannot satisfy a requirement tied to that stimulus.
     response = client.post(
         "/lessons/3/check",
         json={"code": 'on start { write("Key A pressed"); }'},

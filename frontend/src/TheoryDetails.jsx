@@ -233,22 +233,22 @@ export default function TheoryDetails({ sources = [] }) {
 
   return (
     <section className="learning-panel theory-page" lang={language}>
+      <label>
+        {language === "ro" ? "Limba" : "Language"}
+        <select value={language} onChange={changeLanguage}>
+          <option value="ro" lang="ro">
+            Română
+          </option>
+          <option value="en" lang="en">
+            English
+          </option>
+        </select>
+      </label>
       <header className="theory-header">
         <div>
           <h2>{text.title}</h2>
           <p>{text.intro}</p>
         </div>
-        <label>
-          {language === "ro" ? "Limba teoriei" : "Theory language"}
-          <select value={language} onChange={changeLanguage}>
-            <option value="ro" lang="ro">
-              Română
-            </option>
-            <option value="en" lang="en">
-              English
-            </option>
-          </select>
-        </label>
       </header>
 
       <section aria-labelledby="theory-foundations">

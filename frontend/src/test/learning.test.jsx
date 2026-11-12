@@ -1,20 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import App from "./App";
-import { api } from "./api";
-import { checkTrace, decodeSignal, parseDbc } from "./workbenchData";
+import App from "../App";
+import { api } from "../api";
+import { checkTrace, decodeSignal, parseDbc } from "../workbenchData";
 
-vi.mock("./api", async (original) => ({ ...(await original()), api: vi.fn() }));
+// Replace HTTP calls with predictable responses while keeping the
+// real helpers from api.js, including hexBytes().
+vi.mock("../api", async (original) => ({
+  ...(await original()),
+  api: vi.fn(),
+}));
 
 const dbc =
   'BO_ 291 VehicleSpeed: 2 SpeedECU\n SG_ Speed : 0|16@1+ (0.01,0) [0|655.35] "km/h" DisplayECU';
+
 const questions = (prefix) =>
   Array.from({ length: 10 }, (_, i) => ({
     id: `${prefix}-${i}`,
     prompt: `${prefix} question ${i + 1}`,
     options: ["A", "B", "C"],
   }));
+
+// The sample DBC interprets 10 27 as raw 0x2710, or 100 km/h after scaling.
 const tx = {
   direction: "Tx",
   identifier: 0x123,
@@ -25,7 +33,11 @@ const tx = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+
+  // Workbench loads its sample DBC directly with fetch. Mock that
+  // request separately from the FastAPI calls made through api().
   globalThis.fetch = vi.fn(async () => ({ ok: true, text: async () => dbc }));
+
   api.mockImplementation(async (path, body) => {
     if (path === "/modules")
       return [
@@ -40,12 +52,18 @@ beforeEach(() => {
       return [
         { id: 1, score: 10, total: 10, created_at: "2026-11-11T10:00:00Z" },
       ];
+
+    // The same path issues a quiz on GET and grades it on POST.
+    // The body distinguishes those calls in this mock.
     if (path === "/modules/0/quiz" && body)
       return { score: 10, total: 10, feedback: [] };
     if (path === "/modules/0/quiz")
       return { session_id: "first", questions: questions("First") };
     if (path.includes("previous_session=first"))
       return { session_id: "next", questions: questions("Next") };
+
+    // Return enough measurement data to exercise the React state transitions.
+    // CAPL execution itself is covered by the backend and browser suites.
     if (path === "/lab/run")
       return {
         time_ms: body.actions.reduce(
@@ -63,6 +81,7 @@ beforeEach(() => {
 
 describe("course navigation", () => {
   it("switches the foundations and applied theory between Romanian and English", async () => {
+    // Clear the saved preference to test the Romanian default explicitly.
     localStorage.removeItem("virtualeculab.theory.language");
     const user = userEvent.setup();
     render(<App />);
@@ -75,7 +94,7 @@ describe("course navigation", () => {
     ).toBeVisible();
 
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Limba teoriei" }),
+      screen.getByRole("combobox", { name: "Limba" }),
       "en",
     );
 
@@ -90,7 +109,7 @@ describe("course navigation", () => {
     ).toBeVisible();
 
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Theory language" }),
+      screen.getByRole("combobox", { name: "Language" }),
       "ro",
     );
 
@@ -107,6 +126,9 @@ describe("course navigation", () => {
     const form = await within(quiz).findByRole("form", {
       name: "Quiz answers",
     });
+
+    // Each question has its own fieldset. Scope option selection to that
+    // fieldset because every mock question contains an option named "A".
     const groups = within(form).getAllByRole("group");
     expect(groups).toHaveLength(10);
     const grade = within(quiz).getByRole("button", { name: "Grade quiz" });
@@ -115,6 +137,9 @@ describe("course navigation", () => {
       await user.click(within(group).getByRole("radio", { name: "A" }));
     await user.click(grade);
     expect(await within(quiz).findByText("Score: 10 / 10")).toBeVisible();
+
+    // Check that the replacement clears the selections and identifies
+    // the displayed session so the backend can exclude its questions.
     await user.click(within(quiz).getByRole("button", { name: "New quiz" }));
     expect(await within(quiz).findByText("1. Next question 1")).toBeVisible();
     expect(grade).toBeDisabled();
@@ -138,6 +163,9 @@ describe("course navigation", () => {
     await user.click(screen.getByRole("button", { name: "Start measurement" }));
     await user.click(inject);
     expect(await screen.findByText("CAN Trace · 1 frames")).toBeVisible();
+
+    // A tab change keeps the draft. A source edit clears the old trace
+    // and disables input until another measurement starts.
     fireEvent.change(code, { target: { value: "on start { }" } });
     expect(inject).toBeDisabled();
     expect(screen.getByText("CAN Trace · 0 frames")).toBeVisible();
@@ -156,6 +184,9 @@ describe("DBC and trace checks", () => {
     const [signal] = parseDbc(
       'BO_ 10 Value: 2 Sender\n SG_ Raw : 7|16@0- (0.5,1) [-200|200] "V" Receiver',
     );
+
+    // In signed big-endian format, FF FC is -4. Scaling and offset
+    // then give -4 * 0.5 + 1 = -1 V.
     expect(decodeSignal({ identifier: 10, data: [0xff, 0xfc] }, signal)).toBe(
       -1,
     );
@@ -175,6 +206,8 @@ describe("DBC and trace checks", () => {
       deadline: 100,
       payload: tx.data,
     };
+
+    // A frame exactly 100 ms after the origin passes a 100 ms deadline.
     expect(
       checkTrace({
         ...args,
@@ -182,6 +215,9 @@ describe("DBC and trace checks", () => {
         origin: { time: 0, frameIndex: 0 },
       }).verdict,
     ).toBe("PASS");
+
+    // The same frame is stale for a later stimulus at the same timestamp.
+    // The new origin starts after it in the trace.
     expect(
       checkTrace({
         ...args,
@@ -199,6 +235,9 @@ describe("DBC and trace checks", () => {
       payload: tx.data,
       origin: { time: 0, frameIndex: 0 },
     };
+
+    // No match is pending before the deadline. A wrong payload does
+    // not count as a match. A late match reports its actual arrival time.
     expect(
       checkTrace({ ...args, measurement: { time_ms: 50, frames: [] } }).verdict,
     ).toBe("PENDING");

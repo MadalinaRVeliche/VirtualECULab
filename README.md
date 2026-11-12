@@ -1,4 +1,9 @@
 # VirtualECULab
+[Live Demo](https://virtualeculab.onrender.com) · [Source Code](https://github.com/MadalinaRVeliche/VirtualECULab) · [CI Tests](https://github.com/MadalinaRVeliche/VirtualECULab/actions)
+
+**Try the demo:** Open Workbench, start a measurement, and inject the default CAN frame. Inspect the Rx and Tx entries in CAN Trace and the decoded speed in Graphics.
+
+##
 
 VirtualECULab is an interactive browser lab for learning CAN communication, event-driven CAPL programming, and the fundamentals of ADAS testing. It brings together a Romanian-language theory reference, a course-wide quiz, and a simulator where learners can inspect the evidence behind a test verdict.
 

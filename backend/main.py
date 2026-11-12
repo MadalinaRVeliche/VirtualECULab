@@ -14,8 +14,13 @@ from backend.learning_api import router as learning_router
 from backend.models import LessonProgress
 
 app = FastAPI(title="Virtual ECU Lab")
+
+# The learning router owns the Workbench endpoint (/lab/run), course
+# metadata, and quizzes. This file also keeps the original lesson routes.
 app.include_router(learning_router)
 
+# In development, Vite and FastAPI run on different origins.
+# The hosted build serves both from the same origin through backend/web.py.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -29,6 +34,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
+    # Render uses this endpoint to check that the web process responds.
     return {"status": "ok"}
 
 
@@ -91,6 +97,9 @@ def simulate(request: SimulationRequest):
             status_code=400,
             detail="A key event requires a single key character.",
         )
+
+    # Programs with a variables block use the single-message CAN parser.
+    # The introductory lessons below use a handler containing only write().
     if re.match(r"\s*variables\b", request.code):
         try:
             return simulate_can_program(
@@ -125,6 +134,8 @@ def simulate(request: SimulationRequest):
     output = []
     position = 0
 
+    # Read consecutive statements from the current position. Searching
+    # for write() calls anywhere in the body could skip invalid code.
     while position < len(body):
         if not body[position:].strip():
             break
@@ -143,6 +154,8 @@ def simulate(request: SimulationRequest):
         output.append(instruction.group(1))
         position = instruction.end()
 
+    # Validate the handler body first. Its output is visible only when
+    # the requested event and, for key events, the character match.
     should_execute = declared_event == request.event and (
         declared_event == "start" or declared_key == request.key
     )
@@ -172,6 +185,8 @@ def check_exercise(
             detail="Lesson not found.",
         )
 
+    # Grade with the same simulator used by /simulate. The keyboard
+    # exercise supplies 'a' as its stimulus; the other two use startup.
     result = simulate(
         SimulationRequest(
             code=submission.code,
@@ -180,9 +195,12 @@ def check_exercise(
         )
     )
     expected_output = expected_outputs[lesson_id]
+
+    # List equality checks the message text, count, and order together.
     passed = result["output"] == expected_output
 
     if passed:
+        # A repeat pass keeps the existing completion record.
         progress = db.get(LessonProgress, lesson_id)
 
         if progress is None:
@@ -213,4 +231,5 @@ def get_progress(db: Annotated[Session, Depends(get_db)]):
 
 @app.post("/can/frames/preview")
 def preview_can_frame(frame: StandardCanFrame):
+    # FastAPI validates the frame before the handler formats it for display.
     return frame.preview()

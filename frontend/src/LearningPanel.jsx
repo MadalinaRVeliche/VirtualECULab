@@ -4,6 +4,9 @@ import TheoryDetails from "./TheoryDetails";
 
 export default function LearningPanel({ module, mode }) {
   const [quiz, setQuiz] = useState(null);
+
+  // Store the selected option index by question ID. The server keeps
+  // the answer key and returns the explanations after grading.
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
@@ -11,8 +14,12 @@ export default function LearningPanel({ module, mode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
+    // Opening Quiz for the first time creates a session on the backend.
+    // Keep that session and its answers when the user switches tabs.
     if (mode !== "Quiz" || loaded) return;
+
     const controller = new AbortController();
     api(`/modules/${module.id}/quiz`, undefined, controller.signal)
       .then((data) => {
@@ -31,6 +38,9 @@ export default function LearningPanel({ module, mode }) {
 
   useEffect(() => {
     if (mode !== "Quiz") return;
+
+    // Refresh saved attempts when Quiz opens or the displayed result changes.
+    // A history request can fail while the current quiz is still usable.
     const controller = new AbortController();
     api(`/modules/${module.id}/quiz-history`, undefined, controller.signal)
       .then((entries) => {
@@ -48,8 +58,15 @@ export default function LearningPanel({ module, mode }) {
     setError("");
     try {
       const params = new URLSearchParams({ revision: String(revision) });
+
+      // Tell the server which set is on screen so normal rotation can
+      // exclude its questions even if another session was created later.
       if (quiz) params.set("previous_session", quiz.session_id);
+
       setQuiz(await api(`/modules/${module.id}/quiz?${params}`));
+
+      // Clear answers and feedback only after the new set has arrived.
+      // If the request fails, the user can still work on the current quiz.
       setAnswers({});
       setResult(null);
       setLoaded(true);
@@ -65,6 +82,8 @@ export default function LearningPanel({ module, mode }) {
     setBusy(true);
     setError("");
     try {
+      // The session identifies the exact question set to grade.
+      // The submission ID identifies this individual attempt.
       const graded = await api(`/modules/${module.id}/quiz`, {
         session_id: quiz.session_id,
         submission_id: crypto.randomUUID(),
@@ -108,6 +127,8 @@ export default function LearningPanel({ module, mode }) {
       {quiz && (
         <form onSubmit={grade} aria-label="Quiz answers">
           {quiz.questions.map((question, index) => {
+            // Match feedback by question ID so it stays tied to the
+            // question regardless of where that question appears in the set.
             const feedback = result?.feedback.find(
               (entry) => entry.id === question.id,
             );
@@ -128,6 +149,9 @@ export default function LearningPanel({ module, mode }) {
                           ...previous,
                           [question.id]: optionIndex,
                         }));
+
+                        // The score applies to the submitted answers.
+                        // Hide it as soon as the selection changes.
                         setResult(null);
                       }}
                     />
@@ -157,6 +181,7 @@ export default function LearningPanel({ module, mode }) {
           <button
             type="button"
             onClick={() => {
+              // Reset the form while keeping the same quiz session.
               setAnswers({});
               setResult(null);
             }}

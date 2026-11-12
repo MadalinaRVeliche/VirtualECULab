@@ -1,5 +1,7 @@
 name: Tests
 
+# Run the same checks for pushed commits and pull requests.
+# workflow_dispatch also allows a manual run from GitHub Actions.
 on:
   push:
   pull_request:
@@ -13,6 +15,8 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-latest
 
+    # These are test defaults for the application configuration.
+    # The pytest fixtures override database access with SQLite for regular tests.
     env:
       DB_HOST: localhost
       DB_PORT: "5432"
@@ -37,6 +41,7 @@ jobs:
     name: Frontend build
     runs-on: ubuntu-latest
 
+    # Frontend commands use the package.json and lockfile in frontend/.
     defaults:
       run:
         working-directory: frontend
@@ -51,6 +56,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Check React behavior, code quality, and the production build separately.
       - name: Frontend component tests
         run: npm test
 
@@ -64,6 +70,8 @@ jobs:
     name: Playwright browser tests
     runs-on: ubuntu-latest
 
+    # Use a disposable PostgreSQL service for the integration and browser
+    # tests. These credentials belong only to the CI database.
     services:
       postgres:
         image: postgres:18
@@ -79,6 +87,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    # FastAPI runs on the job runner and reaches the service on the mapped port.
     env:
       DB_HOST: localhost
       DB_PORT: "5432"
@@ -104,23 +113,31 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # Playwright needs both the Chromium binary and its Linux dependencies.
       - name: Install Chromium
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
+      # Import the models to register the schema, then create the tables
+      # before either test suite attempts to read or write quiz data.
       - name: Create database tables
         run: |
           python -c "from backend.database import Base, engine; import backend.models; Base.metadata.create_all(bind=engine)"
 
+      # Provide the integration test's opt-in URL explicitly. The app uses
+      # the job-level DB_* settings when Playwright launches FastAPI.
       - name: PostgreSQL integration test
         env:
           POSTGRES_TEST_URL: postgresql+psycopg://e2e_user:e2e_test_password@localhost:5432/virtualeculab_e2e
         run: python -m pytest backend/tests/test_postgres.py -q
 
+      # Playwright's CI configuration starts FastAPI and Vite and waits for
+      # both servers before driving the application in Chromium.
       - name: Run browser tests
         working-directory: frontend
         run: npx playwright test
 
+      # Upload failed-test traces and screenshots for debugging in GitHub.
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

@@ -5,9 +5,13 @@ from dotenv import load_dotenv
 from sqlalchemy import URL, create_engine, make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
+# Resolve .env relative to the repository so startup does not depend on
+# the terminal's working directory. Existing environment variables take priority.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
+# Render provides DATABASE_URL. For local development, build the URL
+# from the individual DB_* settings in .env.
 configured_url = os.getenv("DATABASE_URL")
 database_url = (
     make_url(configured_url)
@@ -22,9 +26,13 @@ database_url = (
     )
 )
 
+# Hosting providers can supply a generic PostgreSQL URL. Select the psycopg
+# driver installed by the project while preserving the URL's other settings.
 if database_url.drivername in {"postgres", "postgresql"}:
     database_url = database_url.set(drivername="postgresql+psycopg")
 
+# Check pooled connections before reuse in case the database closed one.
+# The SQLite thread option applies only when the app is configured for SQLite.
 engine = create_engine(
     database_url,
     pool_pre_ping=True,
@@ -33,6 +41,8 @@ engine = create_engine(
     else {},
 )
 
+# Keep loaded model attributes available after commit so response builders
+# can read fields such as a saved quiz session ID without another query.
 SessionLocal = sessionmaker(
     bind=engine,
     autoflush=False,
@@ -45,5 +55,7 @@ class Base(DeclarativeBase):
 
 
 def get_db():
+    # FastAPI injects one session per request. The context manager closes it
+    # afterward. The route decides when to commit its writes.
     with SessionLocal() as session:
         yield session

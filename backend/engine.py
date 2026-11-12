@@ -52,6 +52,8 @@ OPERATORS = {
 
 class Parser:
     def __init__(self, source):
+        # Match at the current position so invalid characters cannot be
+        # skipped. Comments and whitespace are consumed without emitting tokens.
         self.tokens = []
         position = 0
         while position < len(source):
@@ -94,6 +96,8 @@ class Parser:
         return int(raw, 16 if raw.lower().startswith("0x") else 10)
 
     def reference(self):
+        # Scalars and message fields share the same representation.
+        # Keep byte index expressions unevaluated until the handler runs.
         name = self.take()
         field, index = None, None
         if self.peek() == ".":
@@ -124,6 +128,9 @@ class Parser:
             left = self.reference()
         else:
             raise SimulationError(f"Expected an expression, found {value!r}.")
+
+        # A higher minimum on the right makes equal-priority operators
+        # group left to right, while stronger ones still bind first.
         while self.peek() in PRECEDENCE and PRECEDENCE[self.peek()] >= minimum:
             operation = self.take()
             right = self.expression(PRECEDENCE[operation] + 1)
@@ -161,7 +168,7 @@ class Parser:
             if self.peek() != ")":
                 arguments.append(self.expression())
                 while self.peek() == ",":
-                    self.take()
+                    self.take(",")
                     arguments.append(self.expression())
             self.take(")")
             self.take(";")
@@ -171,6 +178,8 @@ class Parser:
         if operation == "=":
             value = self.expression()
         elif operation in {"++", "--"}:
+            # Treat standalone increments and decrements as assignments.
+            # Runtime can then apply the same type and range checks.
             value = (
                 "binary",
                 "+" if operation == "++" else "-",
@@ -206,6 +215,9 @@ class Parser:
                 self.take(";")
                 declarations.append((kind, name, identifier, initial))
             self.take("}")
+
+        # Index handlers by event and selector. Startup has no selector;
+        # key, message, and timer handlers use a character, CAN ID, or name.
         while self.peek() != "<end>":
             self.take("on")
             event = self.take()
@@ -241,6 +253,9 @@ class Runtime:
             declarations, self.handlers = Parser(code).program()
         except RecursionError as exc:
             raise SimulationError("Program nesting is too deep.") from exc
+
+        # A runtime represents one measurement. Start with a fresh clock,
+        # mutable message buffers, timer schedule, and trace for each replay.
         self.values, self.types, self.messages, self.timers = {}, {}, {}, {}
         self.now = 0
         self.steps = 0
@@ -306,6 +321,8 @@ class Runtime:
             self.validate_expression(expr[2], event)
 
     def validate(self, statements, event):
+        # Only these built-ins can be invoked from a parsed handler.
+        # Validate both branches of each if before running the program.
         arities = {"write": 1, "output": 1, "setTimer": 2, "cancelTimer": 1}
         for stmt in statements:
             if stmt[0] == "if":
@@ -349,6 +366,9 @@ class Runtime:
             offset = self.integer(self.evaluate(index))
             if not 0 <= offset < 8:
                 raise SimulationError("Byte index must be 0–7.")
+
+            # A received frame contains only the bytes actually on the bus.
+            # Declared outgoing messages have a separate eight-byte buffer.
             if name == "this" and offset >= message["dlc"]:
                 raise SimulationError("Attempted to read beyond received DLC.")
             return message["data"][offset]
@@ -363,6 +383,9 @@ class Runtime:
             )
         _, operation, left_expr, right_expr = expr
         left = self.integer(self.evaluate(left_expr))
+
+        # Short-circuit logical expressions so an unused right operand
+        # cannot trigger a runtime error.
         if operation == "&&":
             return int(bool(left) and bool(self.integer(self.evaluate(right_expr))))
         if operation == "||":
@@ -371,6 +394,10 @@ class Runtime:
         if operation in {"/", "%"}:
             if right == 0:
                 raise SimulationError("Division by zero.")
+
+            # Match C-style division toward zero. Python's // alone would
+            # round a negative quotient down. Derive the remainder from
+            # the same quotient so division and modulo stay consistent.
             quotient = (abs(left) // abs(right)) * (
                 -1 if (left < 0) != (right < 0) else 1
             )
@@ -398,6 +425,8 @@ class Runtime:
 
     def execute(self, statements):
         for stmt in statements:
+            # The instruction budget is shared across all handlers in
+            # the measurement, including timers fired by clock advances.
             self.steps += 1
             if self.steps > 10000:
                 raise SimulationError("Simulation instruction budget exceeded.")
@@ -421,6 +450,9 @@ class Runtime:
                     message = self.messages[args[0][1]]
                     if message["dlc"] is None:
                         raise SimulationError("Set DLC explicitly before output().")
+
+                    # Slice the current payload to snapshot this transmission.
+                    # Later writes to the message buffer leave the Tx row intact.
                     frame = StandardCanFrame(
                         identifier=message["identifier"],
                         data=message["data"][: message["dlc"]],
@@ -434,10 +466,15 @@ class Runtime:
                     delay = self.integer(self.evaluate(args[1]))
                     if not 1 <= delay <= 60000:
                         raise SimulationError("Timer delays must be 1–60000 ms.")
+
+                    # A new schedule replaces any pending expiry for this
+                    # timer. The sequence breaks ties at the same due time.
                     self.sequence += 1
                     self.timers[args[0][1]] = (self.now + delay, self.sequence)
 
     def dispatch(self, event, selector=None):
+        # Record the event even if no handler matches it. This preserves
+        # the timeline of what the runtime attempted to dispatch.
         self.events.append({"time_ms": self.now, "event": event, "selector": selector})
         self.execute(self.handlers.get((event, selector), []))
 
@@ -445,6 +482,9 @@ class Runtime:
         target = self.now + milliseconds
         if target > 60000:
             raise SimulationError("A simulation can span at most 60000 ms.")
+
+        # Run every expiry up to and including the target. Rebuild the
+        # schedule after each callback because it can rearm or cancel timers.
         while True:
             scheduled = [
                 (due[0], due[1], name)
@@ -460,6 +500,8 @@ class Runtime:
         self.now = target
 
     def replay(self, actions):
+        # Startup always runs first. Replay the actions in the order
+        # supplied by Workbench, even when they share a virtual timestamp.
         self.dispatch("start")
         for action in actions:
             kind = action["type"]
@@ -471,7 +513,13 @@ class Runtime:
                 frame = StandardCanFrame(
                     identifier=action["identifier"], data=action["data"]
                 ).preview()
+
+                # Record Rx before the handler runs so any Tx response
+                # appears afterward in Trace, even at the same timestamp.
                 self.frames.append({**frame, "time_ms": self.now, "direction": "Rx"})
+
+                # Expose the received payload through this only while
+                # dispatching the matching on message handler.
                 self.received = {
                     "identifier": frame["identifier"],
                     "dlc": frame["dlc"],

@@ -1,4 +1,7 @@
 $ErrorActionPreference = "Stop"
+
+# Resolve paths from the script so it works from any terminal directory.
+# Use a separate log folder for each launch to preserve earlier diagnostics.
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $logDirectory = Join-Path $env:TEMP (
     "VirtualECULab-" + [guid]::NewGuid().ToString("N")
@@ -9,6 +12,8 @@ New-Item -ItemType Directory -Path $logDirectory | Out-Null
 function Test-Ready {
     param([string]$Url)
 
+    # Check the HTTP response instead of relying on whether a process exists.
+    # During startup the URL may fail temporarily, so polling can continue.
     try {
         $response = Invoke-WebRequest `
             -Uri $Url `
@@ -48,6 +53,7 @@ $servers = @(
 )
 
 foreach ($server in $servers) {
+    # Reuse a healthy server if the script was already run.
     if (Test-Ready $server.Url) {
         Write-Host "[PASS] $($server.Name) already ready: $($server.Url)" `
             -ForegroundColor Green
@@ -59,6 +65,8 @@ foreach ($server in $servers) {
         -State Listen `
         -ErrorAction SilentlyContinue
 
+    # A busy port with an unhealthy URL may belong to another application.
+    # Stop here and leave that process alone.
     if ($listener) {
         throw "$($server.Name): port $($server.Port) is occupied, but its URL is unhealthy. No process was stopped."
     }
@@ -68,6 +76,8 @@ foreach ($server in $servers) {
 
     Write-Host "[START] $($server.Name)..." -ForegroundColor Cyan
 
+    # Start without opening another console window. Redirect logs so
+    # startup errors remain available for troubleshooting.
     Start-Process `
         -FilePath $server.Executable `
         -ArgumentList $server.Arguments `
@@ -77,6 +87,7 @@ foreach ($server in $servers) {
         -RedirectStandardError $server.ErrorLog | Out-Null
 }
 
+# Give both endpoints a shared startup window, then report each result.
 $deadline = (Get-Date).AddSeconds(60)
 
 do {

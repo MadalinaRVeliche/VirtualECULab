@@ -13,6 +13,8 @@ from backend.lab_tools import (
 
 def e2e_case(challenge=False):
     if challenge:
+        # Combine a tolerated loss across wraparound with a duplicate,
+        # a bad CRC, and a jump beyond the allowed sequence window.
         return {
             "max_lost": 1,
             "frames": [
@@ -28,6 +30,9 @@ def e2e_case(challenge=False):
                 ]
             ],
         }
+
+    # Sending counter 8 first with a bad CRC and then with a good CRC
+    # checks that the rejected frame leaves the reference counter unchanged.
     return {
         "max_lost": 0,
         "frames": [
@@ -46,6 +51,9 @@ def e2e_case(challenge=False):
 
 def adas_cases(challenge=False):
     threshold = 1.5 if challenge else 2.0
+
+    # The first case lands exactly on the TTC threshold in both modes.
+    # The other cases cover a later collision, no closing speed, and bad sensors.
     return [
         {
             "distance_m": 15 if challenge else 20,
@@ -70,6 +78,7 @@ def assess(module_id, code, payload, challenge=False):
     evidence = None
 
     def check(name, actual, expected):
+        # Keep both values so the caller can see which behavior differed.
         checks.append(
             {
                 "name": name,
@@ -80,11 +89,15 @@ def assess(module_id, code, payload, challenge=False):
         )
 
     def run(actions):
+        # Start each scenario at time zero with a fresh runtime.
+        # Evidence contains the latest replay; checks retain earlier results.
         nonlocal evidence
         evidence = Runtime(code).replay(actions)
         return evidence
 
     if module_id <= 3:
+        # The first two lessons run at startup. The third requires a key
+        # stimulus and separately checks that startup alone produces no text.
         actions = (
             []
             if module_id != 3
@@ -102,6 +115,8 @@ def assess(module_id, code, payload, challenge=False):
         if module_id == 3:
             check("Startup remains silent", Runtime(code).replay([])["output"], [])
     elif module_id == 4:
+        # Check that only the requested key produces frames, and compare
+        # the complete ordered frame list so extra or reversed frames fail.
         check("Startup does not transmit", run([])["frames"], [])
         frames = run([{"type": "key", "key": "a"}])["frames"]
         expected_data = (
@@ -118,6 +133,7 @@ def assess(module_id, code, payload, challenge=False):
             [],
         )
     elif module_id == 5:
+        # Repeated key events in one measurement must share counter state.
         step = 2 if challenge else 1
         frames = run([{"type": "key", "key": "a"}] * 3)["frames"]
         check(
@@ -153,6 +169,9 @@ def assess(module_id, code, payload, challenge=False):
             [(f["identifier"], f["data"], f["time_ms"]) for f in frames],
             [(0x300, [1], period * i) for i in (1, 2, 3)],
         )
+
+        # Stop at 3 periods, stay idle until period 5, then restart.
+        # A fresh delay puts the next transmission at period 6.
         actions = [
             {"type": "advance", "ms": 3 * period},
             {"type": "key", "key": "s"},
@@ -186,6 +205,9 @@ def assess(module_id, code, payload, challenge=False):
             run([{"type": "advance", "ms": timeout}])["output"],
             ["Communication timeout"],
         )
+
+        # The second Rx arrives at 200 ms and should reset the watchdog.
+        # Check one millisecond before the new deadline and then at the deadline.
         actions = [
             {"type": "advance", "ms": 100},
             rx,
@@ -220,6 +242,9 @@ def assess(module_id, code, payload, challenge=False):
             run([{"type": "advance", "ms": 3 * timeout}])["output"],
             ["Communication timeout"],
         )
+
+        # A valid frame after a timeout should start a new monitoring
+        # window, so a second period of silence can trigger another timeout.
         result = run(
             [{"type": "advance", "ms": timeout}, rx, {"type": "advance", "ms": timeout}]
         )
@@ -230,6 +255,9 @@ def assess(module_id, code, payload, challenge=False):
         )
     elif module_id == 8:
         settings = SignalSettings.model_validate(payload.get("settings", {}))
+
+        # Use two nonzero payloads to check byte order and scaling.
+        # An all-zero payload makes the configured offset visible on its own.
         cases = (
             [([0x03, 0xE8], 90), ([0x01, 0xF4], 40), ([0, 0], -10)]
             if challenge
@@ -242,6 +270,8 @@ def assess(module_id, code, payload, challenge=False):
                 expected,
             )
     elif module_id == 9:
+        # Use the same E2E checker as the API and grade the predicted
+        # status of every frame in the order it appears in the scenario.
         rows = check_e2e(E2ERequest.model_validate(e2e_case(challenge)))["rows"]
         check(
             "Integrity and sequence classifications",
@@ -262,6 +292,7 @@ def assess(module_id, code, payload, challenge=False):
             ["PASS", "PASS", "FAIL", "FAIL", "NOT_EXECUTED"],
         )
     elif module_id == 11:
+        # Use the same simplified ADAS model as the API for the reference states.
         expected = [
             adas_result(ADASRequest.model_validate(case))["state"]
             for case in adas_cases(challenge)
@@ -269,6 +300,8 @@ def assess(module_id, code, payload, challenge=False):
         check("Scenario classifications", payload.get("predictions", []), expected)
     else:
         raise ValueError("Unknown module.")
+
+    # Require at least one actual check. all([]) would otherwise pass.
     return {
         "passed": bool(checks) and all(c["passed"] for c in checks),
         "checks": checks,

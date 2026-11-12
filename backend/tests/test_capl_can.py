@@ -5,6 +5,8 @@ from backend.main import app
 
 client = TestClient(app)
 
+# Use a known two-byte speed payload so the tests can check the exact
+# frame returned by the API.
 PROGRAM = """
 variables
 {
@@ -29,6 +31,9 @@ def test_output_transmits_frame_for_matching_key():
 
     assert response.status_code == 200
     result = response.json()
+
+    # output() adds a CAN frame to the trace. Console output is separate
+    # and stays empty because this program never calls write().
     assert result["output"] == []
     assert len(result["frames"]) == 1
     assert result["frames"][0]["identifier_hex"] == "0x123"
@@ -37,6 +42,8 @@ def test_output_transmits_frame_for_matching_key():
 
 
 def test_start_does_not_transmit_keyboard_message():
+    # Omitting the event uses startup. The program only handles key 'a',
+    # so starting the simulation should produce neither logs nor frames.
     response = client.post(
         "/simulate",
         json={"code": PROGRAM},
@@ -47,6 +54,8 @@ def test_start_does_not_transmit_keyboard_message():
 
 
 def test_assigning_bytes_without_output_does_not_transmit():
+    # Keep the assignments and remove output() to verify that writing
+    # to the message buffer alone does not transmit anything.
     code = PROGRAM.replace("output(VehicleSpeed);", "")
 
     response = client.post(
@@ -59,6 +68,8 @@ def test_assigning_bytes_without_output_does_not_transmit():
 
 
 def test_each_output_captures_a_separate_snapshot():
+    # Reuse the same message buffer for two transmissions. The first
+    # frame must retain its original bytes after the buffer changes.
     code = PROGRAM.replace(
         "output(VehicleSpeed);",
         """
@@ -82,6 +93,8 @@ def test_each_output_captures_a_separate_snapshot():
     ]
 
 
+# Change one valid statement at a time to cover a missing DLC and
+# values just outside the allowed DLC, byte index, byte value, and CAN ID.
 @pytest.mark.parametrize(
     ("original", "replacement"),
     [

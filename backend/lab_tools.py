@@ -18,15 +18,22 @@ class SignalSettings(BaseModel):
 
     @model_validator(mode="after")
     def bounds(self):
+        # Both fields can be valid on their own while their combination
+        # places part of the signal outside the eight-byte payload.
         if self.start_byte + self.length > 8:
             raise ValueError("Signal exceeds the Classical CAN payload.")
         return self
 
 
 def decode(data, settings):
+    # This backend exercise decodes an unsigned, byte-aligned speed signal
+    # from explicit settings. The Workbench DBC parser lives in the frontend.
     end = settings.start_byte + settings.length
     if end > len(data):
         raise ValueError("Payload is too short for the configured signal.")
+
+    # Extract the raw integer in the configured byte order, then apply
+    # the factor and offset to obtain the physical value.
     raw = int.from_bytes(bytes(data[settings.start_byte : end]), settings.byte_order)
     return {
         "raw": raw,
@@ -46,6 +53,8 @@ def crc8(data):
     for byte in data:
         crc ^= byte
         for _ in range(8):
+            # Apply the polynomial when the outgoing high bit is set.
+            # Mask after each shift to keep the CRC register eight bits wide.
             crc = ((crc << 1) ^ (0x1D if crc & 0x80 else 0)) & 0xFF
     return crc ^ 0xFF
 
@@ -67,12 +76,20 @@ def check_e2e(request):
     accepted = None
     rows = []
     for frame in request.frames:
+        # This teaching profile feeds the CRC with the Data ID high byte,
+        # Data ID low byte, counter, and payload in that order.
         expected = crc8(
             [request.data_id >> 8, request.data_id & 255, frame.counter, *frame.data]
         )
+
+        # Scenario inputs may supply a received CRC explicitly. Otherwise
+        # use the calculated value and optionally flip one bit to simulate a fault.
         received = expected if frame.crc is None else frame.crc
         if frame.corrupt:
             received ^= 1
+
+        # Compare against the last accepted counter. Modulo 16 makes
+        # the wrap from 15 to 0 a normal step of one.
         delta = None if accepted is None else (frame.counter - accepted) % 16
         if received != expected:
             status = "WRONG_CRC"
@@ -83,9 +100,13 @@ def check_e2e(request):
         elif delta == 1:
             status = "OK"
         elif delta <= request.max_lost + 1:
+            # A step of two means one intermediate frame was missed.
             status = "OK_SOME_LOST"
         else:
             status = "WRONG_SEQUENCE"
+
+        # A rejected frame must leave the reference counter intact so
+        # subsequent frames are still checked against the last accepted one.
         if status in {"INITIAL", "OK", "OK_SOME_LOST"}:
             accepted = frame.counter
         rows.append(
@@ -117,12 +138,18 @@ class VerdictRequest(BaseModel):
 
 
 def check_verdict(request):
+    # Classify an invalid test setup separately from a valid test
+    # whose expected response was missing or late.
     if not request.ready or not request.command_sent:
         return {
             "verdict": "NOT_EXECUTED",
             "response_ms": None,
             "reason": "Preconditions or stimulus are missing; no valid behavior test was executed.",
         }
+
+    # The caller supplies observations relative to the stimulus. Use the
+    # earliest ACTIVE timestamp regardless of the order in the input list.
+    # A response exactly at the deadline passes.
     active = sorted(o.time_ms for o in request.observations if o.state == "ACTIVE")
     first = active[0] if active else None
     passed = first is not None and first <= request.deadline_ms
@@ -148,8 +175,14 @@ class ADASRequest(BaseModel):
 
 
 def adas_result(request):
+    # Assume constant speeds. Convert the relative speed to m/s so
+    # distance in meters divided by closing speed gives TTC in seconds.
+    # A zero or negative closing speed yields no finite TTC in this model.
     closing = (request.ego_kmh - request.target_kmh) / 3.6
     ttc = request.distance_m / closing if closing > 0 else None
+
+    # Evaluate the initial state in priority order: disabled, sensor
+    # fault, driver override in ACC, then the default for the selected mode.
     if not request.enabled:
         state = "OFF"
     elif not request.sensor_valid:
@@ -160,6 +193,9 @@ def adas_result(request):
         state = "ACTIVE"
     else:
         state = "MONITORING"
+
+    # Only the simplified AEB path can request braking. It must be
+    # monitoring, see an obstacle in its path, and meet the TTC threshold.
     braking = (
         request.mode == "AEB"
         and state == "MONITORING"

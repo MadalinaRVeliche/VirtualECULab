@@ -36,6 +36,8 @@ def require_module(identifier):
 
 
 def save_once(db, instance):
+    # The primary key identifies a completed milestone. Let the database
+    # ignore duplicates so repeated or concurrent requests are safe.
     table = instance.__table__
     values = {
         column.name: getattr(instance, column.name) for column in table.primary_key
@@ -70,6 +72,7 @@ class RxAction(BaseModel):
     data: list[Annotated[int, Field(ge=0, le=255, strict=True)]] = Field(max_length=8)
 
 
+# The type field selects the action schema before it reaches the interpreter.
 Action = Annotated[KeyAction | AdvanceAction | RxAction, Field(discriminator="type")]
 
 
@@ -85,6 +88,8 @@ def get_modules():
 
 @router.post("/lab/run")
 def run_lab(request: LabRequest):
+    # Every request contains the CAPL source and the ordered input history.
+    # Rebuild the measurement from time zero instead of storing it on the server.
     try:
         return Runtime(request.code).replay([a.model_dump() for a in request.actions])
     except (SimulationError, RecursionError) as exc:
@@ -115,6 +120,9 @@ def check_module(module_id: int, request: ModuleSubmission, db: DB):
             else "Invalid lab configuration or unsupported program. Check the documented subset."
         )
         raise HTTPException(400, detail) from exc
+
+    # Standard exercises and challenges use separate progress records.
+    # Save a completion only after the submitted solution passes.
     if result["passed"]:
         if request.challenge:
             save_once(db, LearningMilestone(module_id=module_id, kind="challenge"))
@@ -146,6 +154,9 @@ def learning_progress(db: DB):
     for identifier in MODULES:
         history = [a for a in attempts if a.module_id == identifier]
         missed = {}
+
+        # Replay feedback in attempt order so the latest answer determines
+        # whether a question still counts as missed.
         for attempt in history:
             for answer in attempt.result["feedback"]:
                 if answer["correct"]:
@@ -174,12 +185,18 @@ def new_quiz(
     module_id: int, db: DB, revision: bool = False, previous_session: UUID | None = None
 ):
     module = require_module(module_id)
+
+    # Two entries can ask the same question under different IDs.
+    # Deduplicate by normalized prompt, then shuffle to randomize ties.
     unique = {}
     for question in module["quiz_bank"]:
         unique.setdefault(quiz_prompt_key(question), question)
     bank = list(unique.values())
     random.SystemRandom().shuffle(bank)
+
     if revision:
+        # A correct answer removes a question from the missed set.
+        # A later wrong answer puts it back into revision priority.
         attempts = db.scalars(
             select(QuizAttempt)
             .where(QuizAttempt.module_id == module_id)
@@ -191,6 +208,8 @@ def new_quiz(
                 (missed.discard if feedback["correct"] else missed.add)(feedback["id"])
         bank.sort(key=lambda q: q["id"] not in missed)
     else:
+        # Read newest sessions first. The first rank recorded for a prompt
+        # is its latest appearance, so older occurrences can be ignored.
         sessions = db.scalars(
             select(QuizSession)
             .where(QuizSession.module_id == module_id)
@@ -210,7 +229,11 @@ def new_quiz(
                 if len(recency) == len(unique):
                     break
         finally:
+            # Close the streamed result even when the loop stops early.
             sessions.close()
+
+        # Prefer the set currently displayed by the browser. It may differ
+        # from the latest session in the database if another tab opened a quiz.
         if previous_session is not None:
             current = db.get(QuizSession, str(previous_session))
             if current is not None and current.module_id == module_id:
@@ -224,6 +247,9 @@ def new_quiz(
                 for question in bank
                 if quiz_prompt_key(question) not in previous_prompts
             ]
+
+        # Unseen questions go first. Among previously seen questions,
+        # a larger rank means an older appearance and higher priority.
         bank.sort(
             key=lambda question: -recency.get(quiz_prompt_key(question), float("inf"))
         )
@@ -235,6 +261,8 @@ def quiz_prompt_key(question):
 
 
 def save_quiz_session(module_id, chosen, db):
+    # Store the exact questions, option order, and answer key that were
+    # issued. Grading can then use that snapshot after the bank changes.
     session = QuizSession(
         id=str(uuid4()),
         module_id=module_id,
@@ -243,6 +271,9 @@ def save_quiz_session(module_id, chosen, db):
     )
     db.add(session)
     db.commit()
+
+    # The browser receives the prompts and choices. Correct answers and
+    # explanations are returned only after grading.
     return {
         "session_id": session.id,
         "module_id": module_id,
@@ -262,6 +293,9 @@ class QuizSubmission(BaseModel):
 @router.post("/modules/{module_id}/quiz")
 def grade_quiz(module_id: int, request: QuizSubmission, db: DB):
     require_module(module_id)
+
+    # A retry with the same submission ID and payload returns the stored
+    # result. Reusing that ID for different answers is a conflict.
     existing = db.scalar(
         select(QuizAttempt).where(
             QuizAttempt.submission_id == str(request.submission_id)
@@ -277,9 +311,13 @@ def grade_quiz(module_id: int, request: QuizSubmission, db: DB):
                 409, "Submission identifier was already used with different answers."
             )
         return existing.result
+
     session = db.get(QuizSession, str(request.session_id))
     if session is None or session.module_id != module_id:
         raise HTTPException(404, "Quiz session not found. Start a new quiz.")
+
+    # Some database drivers return a naive timestamp. Treat it as UTC
+    # because sessions are created in UTC, then apply the 24-hour limit.
     created = (
         session.created_at.replace(tzinfo=UTC)
         if session.created_at.tzinfo is None
@@ -287,6 +325,9 @@ def grade_quiz(module_id: int, request: QuizSubmission, db: DB):
     )
     if (datetime.now(UTC) - created).total_seconds() > 86400:
         raise HTTPException(410, "Quiz session expired. Start a new quiz.")
+
+    # Validate IDs and option indices against the issued quiz snapshot
+    # before indexing any options or calculating the score.
     if set(request.answers) != {q["id"] for q in session.questions}:
         raise HTTPException(
             422,
@@ -294,6 +335,7 @@ def grade_quiz(module_id: int, request: QuizSubmission, db: DB):
         )
     if any(request.answers[q["id"]] >= len(q["options"]) for q in session.questions):
         raise HTTPException(422, "Answer option is outside the available choices.")
+
     feedback = [
         {
             "id": q["id"],
@@ -323,6 +365,8 @@ def grade_quiz(module_id: int, request: QuizSubmission, db: DB):
     try:
         db.commit()
     except IntegrityError:
+        # A concurrent request may have saved this submission after the
+        # first lookup. Roll back before reading the winning row.
         db.rollback()
         existing = db.scalar(
             select(QuizAttempt).where(
@@ -343,6 +387,9 @@ def grade_quiz(module_id: int, request: QuizSubmission, db: DB):
 @router.get("/modules/{module_id}/quiz-history")
 def quiz_history(module_id: int, db: DB):
     require_module(module_id)
+
+    # Return the latest 20 attempts for the requested module.
+    # Keep the history response small by returning summaries, not answer keys.
     attempts = db.scalars(
         select(QuizAttempt)
         .where(QuizAttempt.module_id == module_id)
@@ -369,6 +416,8 @@ def scenarios(module_id: int, challenge: bool = False):
     if module_id == 9:
         return e2e_case(challenge)
     if module_id == 10:
+        # Keep the same verdict cases in both modes and place responses
+        # before, exactly at, and after the selected deadline.
         d = 150 if challenge else 100
         return {
             "deadline_ms": d,

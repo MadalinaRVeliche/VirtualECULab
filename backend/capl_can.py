@@ -2,6 +2,7 @@ import re
 
 from backend.can_frames import StandardCanFrame
 
+# This small CAPL subset accepts hexadecimal and decimal integer literals.
 NUMBER = r"(?:0[xX][0-9a-fA-F]+|[0-9]+)"
 
 
@@ -10,6 +11,8 @@ def parse_number(value):
 
 
 def simulate_can_program(code, event="start", key=None):
+    # Match the entire source so the program has one message declaration
+    # followed by one supported event handler.
     program = re.fullmatch(
         rf"\s*variables\s*\{{\s*"
         rf"message\s+(?P<identifier>{NUMBER})\s+"
@@ -32,6 +35,8 @@ def simulate_can_program(code, event="start", key=None):
     if identifier > 0x7FF:
         raise ValueError("Standard CAN identifiers cannot exceed 0x7FF.")
 
+    # Build the statement patterns around the declared name so assignments
+    # and output() refer to the message defined by this program.
     name = re.escape(program.group("name"))
     body = program.group("body")
 
@@ -45,12 +50,16 @@ def simulate_can_program(code, event="start", key=None):
         "write": re.compile(r'write\s*\(\s*"([^"\\\r\n]*)"\s*\)\s*;'),
     }
 
+    # The message buffer has eight slots. DLC determines how many bytes
+    # from that buffer are included when the program transmits a frame.
     dlc = None
     data = [0] * 8
     output = []
     frames = []
     position = 0
 
+    # Parse from the current position so unsupported text cannot be
+    # silently skipped between valid statements.
     while position < len(body):
         if body[position].isspace():
             position += 1
@@ -87,6 +96,8 @@ def simulate_can_program(code, event="start", key=None):
                         "Our simulator requires an explicit DLC before output()."
                     )
 
+                # Slice the current buffer to capture a snapshot.
+                # Later assignments cannot modify an earlier transmission.
                 frame = StandardCanFrame(
                     identifier=identifier,
                     data=data[:dlc],
@@ -101,6 +112,8 @@ def simulate_can_program(code, event="start", key=None):
                 'dlc, byte(index), output(message), or write("text").'
             )
 
+    # Validate the handler body for every request. Return its logs and
+    # frames only if the requested event matches, including the exact key.
     declared_event = "start" if program.group("event") == "start" else "key"
     triggered = declared_event == event and (
         declared_event == "start" or program.group("key") == key

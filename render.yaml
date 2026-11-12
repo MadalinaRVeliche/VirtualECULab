@@ -3,7 +3,12 @@ services:
     name: virtualeculab
     runtime: docker
     plan: free
+
+    # Render checks this FastAPI route before sending traffic to the service.
     healthCheckPath: /health
+
     envVars:
+      # Supply the PostgreSQL connection string in the Render dashboard.
+      # The blueprint declares the key without storing its value in Git.
       - key: DATABASE_URL
         sync: false
